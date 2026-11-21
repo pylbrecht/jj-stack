@@ -7,11 +7,11 @@ from dataclasses import replace
 
 import jj_stack.console as console
 import jj_stack.ui as ui
-from jj_stack.commands.github_run import GithubRun, ObservedTrunk
 from jj_stack.errors import CliError, error_message
 from jj_stack.forge.errors import ForgeError
 from jj_stack.forge.github.models import GithubStack
 from jj_stack.forge.github.overview_comments import STACK_OVERVIEW_COMMENT_MARKER
+from jj_stack.forge.github.run import GithubRun, ObservedTrunk
 from jj_stack.formatting import format_pr_label
 from jj_stack.identifiers import ChangeId, CommitId
 from jj_stack.jj.client import PRRefUpdate
@@ -227,7 +227,7 @@ async def publish_prepared(
             github_client=github_client,
             on_progress=progress.advance,
             plans=pr_plans,
-            repository_id=trunk.github_repo.node_id,
+            repo=trunk.github_repo,
             state_store=run.context.state_store,
         )
     pr_numbers = tuple(pr.number for _, pr in submitted)

@@ -6,8 +6,8 @@ from collections.abc import Sequence
 
 import jj_stack.ui as ui
 from jj_stack.errors import CliError, UnsupportedStackError
-from jj_stack.forge.github.models import GithubRepo
 from jj_stack.forge.github.resolution import resolve_trunk_branch
+from jj_stack.forge.models import Repo
 from jj_stack.identifiers import CommitId
 from jj_stack.jj.client import JjClient
 from jj_stack.models.git import GitRemote
@@ -32,7 +32,7 @@ def require_usable_trunk(trunks: Sequence[LocalCommit]) -> LocalCommit:
 def observe_trunk_branch(
     *,
     jj_client: JjClient,
-    github_repo_state: GithubRepo,
+    github_repo_state: Repo,
     remote: GitRemote,
     trunk_commit_id: CommitId,
 ) -> tuple[str, dict[str, CommitId]]:

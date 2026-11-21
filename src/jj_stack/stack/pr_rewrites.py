@@ -12,9 +12,9 @@ from dataclasses import dataclass
 
 import jj_stack.ui as ui
 from jj_stack.errors import CliError
-from jj_stack.forge.github.client import GithubClient
 from jj_stack.forge.github.error_messages import read_or_stop
 from jj_stack.forge.models import PullRequest
+from jj_stack.forge.protocol import Forge
 from jj_stack.identifiers import ChangeId, CommitId
 from jj_stack.jj.client import JjClient, JjCommandError
 from jj_stack.models.stack import LocalCommit
@@ -54,7 +54,7 @@ class HeadRewrite:
 
 async def find_head_rewrites(
     jj_client: JjClient,
-    github: GithubClient,
+    github: Forge,
     *,
     remote: str,
     trunk_branch: str,

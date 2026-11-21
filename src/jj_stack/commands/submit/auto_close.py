@@ -6,8 +6,8 @@ import jj_stack.ui as ui
 from jj_stack.concurrency import run_bounded_tasks
 from jj_stack.errors import CliError
 from jj_stack.forge.errors import ForgeError
-from jj_stack.forge.github.client import GithubClient
 from jj_stack.forge.models import PullRequest
+from jj_stack.forge.protocol import Forge
 from jj_stack.formatting import format_pr_label
 from jj_stack.identifiers import CommitId
 from jj_stack.jj.client import JjClient
@@ -17,7 +17,7 @@ from .models import PRSyncPlan
 
 async def retarget_pr_bases_before_branch_push(
     *,
-    github_client: GithubClient,
+    github_client: Forge,
     prs: tuple[PullRequest, ...],
     trunk_branch: str,
 ) -> None:
@@ -70,7 +70,7 @@ def predict_prs_auto_closed_by_push(
 
 async def _retarget_pr_base_before_branch_push(
     *,
-    github_client: GithubClient,
+    github_client: Forge,
     pr: PullRequest,
     trunk_branch: str,
 ) -> None:

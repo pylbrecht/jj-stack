@@ -8,9 +8,8 @@ import jj_stack.ui as ui
 from jj_stack.concurrency import run_bounded_tasks
 from jj_stack.errors import CliError
 from jj_stack.forge.errors import ForgeError
-from jj_stack.forge.github.client import GithubClient
-from jj_stack.forge.github.models import GithubPRReview
-from jj_stack.forge.models import PullRequest
+from jj_stack.forge.models import PRReview, PullRequest, Repo
+from jj_stack.forge.protocol import Forge
 from jj_stack.formatting import format_pr_number
 from jj_stack.models.tracking import (
     PRIdentity,
@@ -38,7 +37,7 @@ async def _github_request[Result](
 
 async def load_re_request_reviewers(
     *,
-    github_client: GithubClient,
+    github_client: Forge,
     prs: tuple[PullRequest, ...],
 ) -> dict[int, list[str]]:
     reviews = await run_bounded_tasks(
@@ -57,9 +56,9 @@ async def load_re_request_reviewers(
 
 async def sync_prs(
     *,
-    github_client: GithubClient,
+    github_client: Forge,
     plans: tuple[PRSyncPlan, ...],
-    repository_id: str,
+    repo: Repo,
     state_store: TrackingStore,
     on_progress: Callable[[], None],
 ) -> tuple[tuple[PRSyncPlan, PullRequest], ...]:
@@ -68,7 +67,7 @@ async def sync_prs(
         run_item=lambda plan: _sync_pr(
             github_client=github_client,
             plan=plan,
-            repository_id=repository_id,
+            repo=repo,
             state_store=state_store,
         ),
         on_success=on_progress,
@@ -78,9 +77,9 @@ async def sync_prs(
 
 async def _sync_pr(
     *,
-    github_client: GithubClient,
+    github_client: Forge,
     plan: PRSyncPlan,
-    repository_id: str,
+    repo: Repo,
     state_store: TrackingStore,
 ) -> tuple[PRSyncPlan, PullRequest]:
     prepared_change = plan.prepared
@@ -96,7 +95,7 @@ async def _sync_pr(
                 body=plan.generated_description.body,
                 draft=plan.draft,
                 head=branch,
-                repository_id=repository_id,
+                repo=repo,
                 title=plan.generated_description.title,
             ),
             error_message=t"Could not create a pull request for branch {ui.bookmark(branch)}",
@@ -140,7 +139,7 @@ async def _sync_pr(
 async def _apply_draft_action(
     *,
     action: PRDraftAction | None,
-    github_client: GithubClient,
+    github_client: Forge,
     pr: PullRequest,
 ) -> PullRequest:
     if action is None:
@@ -153,15 +152,15 @@ async def _apply_draft_action(
         t"{github_client.repo.full_name}"
     )
     return await _github_request(
-        github_client.set_pr_draft(pr=pr, draft=action == "draft"),
+        github_client.update_pr(pr=pr, draft=action == "draft"),
         error_message=message,
     )
 
 
 def _reviewers_to_re_request(
-    reviews: Sequence[GithubPRReview],
+    reviews: Sequence[PRReview],
 ) -> list[str]:
-    latest_reviews_by_user: dict[str, GithubPRReview] = {}
+    latest_reviews_by_user: dict[str, PRReview] = {}
     for review in sorted(reviews, key=lambda item: item.id):
         reviewer = review.user
         if reviewer is None:
@@ -183,7 +182,7 @@ def _reviewers_to_re_request(
 
 async def _sync_pr_metadata(
     *,
-    github_client: GithubClient,
+    github_client: Forge,
     labels: list[str],
     pr_number: int,
     reviewers: list[str],

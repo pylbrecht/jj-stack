@@ -40,8 +40,10 @@ describe current behavior and rationale; commit history records how the design c
   [convergence.py](../../src/jj_stack/stack/convergence.py) plans the selected stack's updates;
   [sync_apply.py](../../src/jj_stack/commands/sync_apply.py) applies local changes, refreshes PRs,
   and runs cleanup.
-- [jj/client.py](../../src/jj_stack/jj/client.py) provides jj queries and mutations;
-  [forge/github/client.py](../../src/jj_stack/forge/github/client.py) handles GitHub requests.
+- [jj/client.py](../../src/jj_stack/jj/client.py) provides jj queries and mutations.
+  [forge/protocol.py](../../src/jj_stack/forge/protocol.py) lists the requests that commands
+  make of a forge, and [forge/github/client.py](../../src/jj_stack/forge/github/client.py)
+  implements them for GitHub.
   [state/store.py](../../src/jj_stack/state/store.py) reads and writes tracking data.
 - [timing.py](../../src/jj_stack/timing.py) records the per-call durations that `--time-output`
   reports. Start a performance investigation by running the slow command with that flag.

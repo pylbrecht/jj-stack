@@ -53,6 +53,7 @@ from jj_stack.forge.github.resolution import (
     select_submit_remote,
 )
 from jj_stack.forge.models import PullRequest
+from jj_stack.forge.protocol import Forge
 from jj_stack.formatting import format_pr_label
 from jj_stack.identifiers import ChangeId, CommitId, short_change_id
 from jj_stack.jj.client import JjClient
@@ -132,7 +133,7 @@ async def _checkout_async(
         return await _adopt_under_lock(context, lambda: _checkout_saved_stack(context, revset))
     remote = select_submit_remote(context.jj_client.list_git_remotes())
     repo = require_github_repo(remote)
-    async with context.open_github_client(repo=repo) as github_client:
+    async with context.open_forge(repo=repo) as github_client:
         if pick:
             choice = await _pick_stack(context, github_client=github_client, repo=repo)
             pr, revset = choice.pr, choice.revset
@@ -196,7 +197,7 @@ async def _checkout_saved_stack(
 async def _checkout_pr_stack(
     *,
     context: CommandContext,
-    github_client: GithubClient,
+    github_client: Forge,
     remote: GitRemote,
     repo: GithubRepoAddress,
     pr_reference: str,
@@ -332,7 +333,7 @@ def _describe_added_commit(client: JjClient, remote: str, commit: LocalCommit) -
 
 async def _load_pr_chain(
     *,
-    github_client: GithubClient,
+    github_client: Forge,
     repo: GithubRepoAddress,
     top: PullRequest,
 ) -> tuple[PullRequest, ...]:

@@ -39,7 +39,6 @@ from jj_stack.commands.cleanup.actions import (
     plan_github_stack_cleanup,
     plan_pr_cleanup,
 )
-from jj_stack.commands.github_run import GithubRun
 from jj_stack.errors import (
     AmbiguousSelectionError,
     CliError,
@@ -50,14 +49,15 @@ from jj_stack.errors import (
 from jj_stack.forge.errors import ForgeError
 from jj_stack.forge.github.client import GithubClient
 from jj_stack.forge.github.error_messages import remote_and_github_unavailable_messages
-from jj_stack.forge.github.models import GithubIssueComment, GithubRepo, GithubStack
+from jj_stack.forge.github.models import GithubStack
 from jj_stack.forge.github.overview_comments import STACK_OVERVIEW_COMMENT_MARKER
 from jj_stack.forge.github.resolution import (
     GithubTarget,
     UnresolvedGithubTarget,
     resolve_github_target,
 )
-from jj_stack.forge.models import PullRequest
+from jj_stack.forge.github.run import GithubRun
+from jj_stack.forge.models import PRComment, PullRequest, Repo
 from jj_stack.formatting import format_pr_label
 from jj_stack.identifiers import ChangeId, short_change_id
 from jj_stack.jj.client import PRRefUpdate
@@ -99,7 +99,7 @@ class _CleanupPass:
     """Inputs shared by every PR in one cleanup pass against GitHub."""
 
     github_client: GithubClient
-    github_repo: GithubRepo | None
+    github_repo: Repo | None
     prepared: PreparedCleanup
     record_action: Callable[[CleanupAction], None]
     remote: GitRemote
@@ -354,7 +354,7 @@ def _resolve_cleanup_change_ids(
 async def _run_cleanup_async(
     *,
     github_client: GithubClient | None = None,
-    github_repo: GithubRepo | None = None,
+    github_repo: Repo | None = None,
     prepared_cleanup: PreparedCleanup,
 ) -> tuple[CleanupAction, ...]:
     actions: list[CleanupAction] = []
@@ -375,7 +375,7 @@ async def _run_cleanup_async(
         client_context = (
             nullcontext(github_client)
             if github_client is not None
-            else prepared_cleanup.context.open_github_client(repo=github_target.repo)
+            else prepared_cleanup.context.open_forge(repo=github_target.repo)
         )
         async with client_context as client:
             await _run_tracked_pr_cleanup_pass(
@@ -500,7 +500,7 @@ async def _observe_cleanup_secondary_facts(
     *,
     github_client: GithubClient,
     pr_numbers: list[int],
-) -> tuple[tuple[GithubStack, ...] | CliError, dict[int, GithubIssueComment | None]]:
+) -> tuple[tuple[GithubStack, ...] | CliError, dict[int, PRComment | None]]:
     """Join the two shared secondary observations with stack errors taking precedence."""
 
     if not pr_numbers:
@@ -527,7 +527,7 @@ async def _cleanup_tracked_pr(
     candidate: TrackedPR,
     change_id: ChangeId,
     stack_blocker: CleanupAction | None,
-    overview_comments: dict[int, GithubIssueComment | None],
+    overview_comments: dict[int, PRComment | None],
 ) -> bool:
     """Apply one planned cleanup, returning whether a partial failure must stop the pass."""
 
@@ -624,7 +624,7 @@ async def _apply_tracked_pr_cleanup(
     cleanup_pass: _CleanupPass,
     *,
     branch_update: PRRefUpdate | None,
-    overview_comment: GithubIssueComment | None,
+    overview_comment: PRComment | None,
     pr: PullRequest,
     candidate: TrackedPR,
     change_id: ChangeId,

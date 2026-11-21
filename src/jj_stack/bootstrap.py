@@ -47,9 +47,14 @@ class CommandContext:
     jj_client: JjClient
     state_store: TrackingStore
 
-    def open_github_client(
-        self, *, repo: GithubRepoAddress, token: str | None = None
+    def open_forge(
+        self,
+        *,
+        repo: GithubRepoAddress,
+        token: str | None = None,
     ) -> GithubClient:
+        """Open the forge that hosts `repo`; GitHub is the only one so far."""
+
         return build_github_client(repo=repo, token=token)
 
 

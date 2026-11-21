@@ -4,16 +4,16 @@ from __future__ import annotations
 
 from jj_stack.errors import CliError
 from jj_stack.forge.errors import ForgeError
-from jj_stack.forge.github.client import GithubClient
-from jj_stack.forge.github.models import GithubIssueComment
+from jj_stack.forge.models import PRComment
+from jj_stack.forge.protocol import Forge
 from jj_stack.formatting import format_pr_number
 
 
 async def upsert_managed_comment(
     *,
     body: str,
-    existing_comment: GithubIssueComment | None,
-    github_client: GithubClient,
+    existing_comment: PRComment | None,
+    github_client: Forge,
     label: str,
     pr_number: int,
 ) -> None:

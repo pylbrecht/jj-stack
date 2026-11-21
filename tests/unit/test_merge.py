@@ -5,9 +5,9 @@ import pytest
 from jj_stack.commands.merge.command import _resolve_merge_method
 from jj_stack.commands.merge.plan import MergeChange, merge_precondition_error
 from jj_stack.errors import CliError
-from jj_stack.forge.github.models import GithubPullRequest, GithubRepo
+from jj_stack.forge.github.models import GithubPullRequest
 from jj_stack.forge.github.resolution import GithubRepoAddress
-from jj_stack.forge.models import BranchRef, PRHead
+from jj_stack.forge.models import BranchRef, PRHead, Repo
 from jj_stack.models.git import GitRemote
 from jj_stack.models.tracking import PRIdentity, SubmittedBaseline, TrackedPR
 from jj_stack.stack.change_state import TrackedPRObservation
@@ -21,14 +21,13 @@ def _repo(
     allow_merge_commit: bool | None,
     allow_rebase_merge: bool | None,
     allow_squash_merge: bool | None,
-) -> GithubRepo:
-    return GithubRepo(
+) -> Repo:
+    return Repo(
         allow_merge_commit=allow_merge_commit,
         allow_rebase_merge=allow_rebase_merge,
         allow_squash_merge=allow_squash_merge,
         default_branch="main",
         full_name="acme/widgets",
-        node_id="R_1",
     )
 
 

@@ -1,4 +1,4 @@
-"""Forge-neutral pull request models that commands and stack code read."""
+"""Forge-neutral repo and pull request models that commands and stack code read."""
 
 from __future__ import annotations
 
@@ -103,3 +103,50 @@ class PullRequest(BaseModel):
     title: str
     # None when the read that returned the PR does not observe it.
     progress: PRProgress | None = None
+
+
+class RepoPermissions(BaseModel):
+    """The token's permissions on the repo, which a forge reports only to signed-in requests."""
+
+    push: bool
+
+
+class Repo(BaseModel):
+    """The repo that receives the pull requests, as observed on the forge."""
+
+    allow_merge_commit: bool | None = None
+    allow_rebase_merge: bool | None = None
+    allow_squash_merge: bool | None = None
+    default_branch: str | None
+    full_name: str
+    permissions: RepoPermissions | None = None
+
+
+class PRComment(BaseModel):
+    """One comment on a pull request's conversation."""
+
+    body: str
+    id: int
+
+
+class PRRevision(BaseModel):
+    """One available pull request revision observed from a force push."""
+
+    before_commit_id: CommitId
+    commit_id: CommitId
+    is_current: bool
+    version: int
+
+
+class PRReviewAuthor(BaseModel):
+    """The account that left a review."""
+
+    login: str
+
+
+class PRReview(BaseModel):
+    """One review of a pull request."""
+
+    id: int
+    state: str
+    user: PRReviewAuthor | None = None
