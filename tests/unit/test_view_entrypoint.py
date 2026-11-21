@@ -12,11 +12,12 @@ import jj_stack.console as console_module
 from jj_stack.bootstrap import GlobalOptions
 from jj_stack.errors import EXIT_INCOMPLETE, CliError
 from jj_stack.forge.github.client import GithubClient
+from jj_stack.forge.github.models import GithubPullRequest
 from jj_stack.forge.github.resolution import GithubRepoAddress, GithubTarget
+from jj_stack.forge.models import BranchRef, PRHead
 from jj_stack.jj.cli_args import JjCliArgs
 from jj_stack.jj.client import JjClient
 from jj_stack.models.git import GitRemote
-from jj_stack.models.github import GithubBranchRef, GithubPR, GithubPRHead
 from jj_stack.models.stack import LocalStack
 from jj_stack.models.tracking import SubmittedBaseline, TrackedPR, TrackingState
 from jj_stack.stack.preparation import PreparedLocalStack
@@ -59,9 +60,9 @@ def test_view_shares_pr_observation_without_losing_selector_order(
         for name in ("trunk", "parent", "left", "right")
     )
     prs = tuple(
-        GithubPR(
-            base=GithubBranchRef(ref="main"),
-            head=GithubPRHead(ref=f"jj-stack/{change.subject}", sha=change.commit_id),
+        GithubPullRequest(
+            base=BranchRef(ref="main"),
+            head=PRHead(ref=f"jj-stack/{change.subject}", sha=change.commit_id),
             html_url=f"https://github.com/octo-org/stacked-prs/pull/{number}",
             node_id=f"PR_{number}",
             number=number,
@@ -105,6 +106,7 @@ def test_view_shares_pr_observation_without_losing_selector_order(
         prs[2].head.ref: (prs[2],),
     }
     github.get_prs_by_numbers.return_value = {1: prs[0]}
+    github.get_pr_progress.return_value = {}
     monkeypatch.setattr(view_module, "bootstrap_context", lambda *_args, **_kwargs: context)
     monkeypatch.setattr(view_module, "prepare_local_stack", prepare_stack)
     monkeypatch.setattr("jj_stack.bootstrap.build_github_client", lambda **_kwargs: github)

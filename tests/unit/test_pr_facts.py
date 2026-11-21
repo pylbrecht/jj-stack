@@ -11,7 +11,8 @@ import pytest
 from jj_stack.bootstrap import CommandContext
 from jj_stack.concurrency import wait_for_read_tasks
 from jj_stack.config import AppConfig
-from jj_stack.forge.github.client import GithubClient, GithubClientError
+from jj_stack.forge.errors import ForgeError
+from jj_stack.forge.github.client import GithubClient
 from jj_stack.forge.github.resolution import GithubRepoAddress
 from jj_stack.jj.client import JjClient
 from jj_stack.models.tracking import TrackingState
@@ -60,7 +61,7 @@ def test_failed_observation_finishes_reads_and_local_worker_before_returning(
         async def fail_when_started(**_kwargs) -> None:
             await local_started.wait()
             await repo_started.wait()
-            raise GithubClientError("request failed")
+            raise ForgeError("request failed", kind="unavailable")
 
         monkeypatch.setattr("jj_stack.stack.pr_facts.observe_change_copies", observe_local)
         github.get_repo.side_effect = get_repo
@@ -99,7 +100,7 @@ def test_failed_observation_finishes_reads_and_local_worker_before_returning(
                     with pytest.raises(asyncio.CancelledError):
                         await observing
                 else:
-                    with pytest.raises(GithubClientError, match="request failed"):
+                    with pytest.raises(ForgeError, match="request failed"):
                         await observing
                 assert local_finished.is_set()
         finally:

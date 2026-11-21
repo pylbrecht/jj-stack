@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+from jj_stack.forge.github.models import GithubPullRequest
+from jj_stack.forge.models import BranchRef, PRHead
 from jj_stack.identifiers import CommitId
-from jj_stack.models.github import GithubBranchRef, GithubPR, GithubPRHead
 from jj_stack.models.stack import LocalCommit
 from jj_stack.models.tracking import PRIdentity, SubmittedBaseline, TrackedPR
 from jj_stack.stack.trunk_evidence import CommitAncestry, classify_trunk_evidence
@@ -15,10 +16,10 @@ def _candidate() -> TrackedPR:
     )
 
 
-def _pr(**updates: object) -> GithubPR:
-    pr = GithubPR(
-        base=GithubBranchRef(ref="main"),
-        head=GithubPRHead(
+def _pr(**updates: object) -> GithubPullRequest:
+    pr = GithubPullRequest(
+        base=BranchRef(ref="main"),
+        head=PRHead(
             label="octo-org:jj-stack/change-1",
             ref="jj-stack/change-1",
             sha="submitted-1",
@@ -32,10 +33,8 @@ def _pr(**updates: object) -> GithubPR:
     return pr.model_copy(update=updates)
 
 
-def _moved_head() -> GithubPR:
-    return _pr(
-        head=GithubPRHead(label="octo-org:jj-stack/change-1", ref="jj-stack/change-1", sha="x")
-    )
+def _moved_head() -> GithubPullRequest:
+    return _pr(head=PRHead(label="octo-org:jj-stack/change-1", ref="jj-stack/change-1", sha="x"))
 
 
 def test_trunk_evidence_needs_the_submitted_head_or_its_rewrite_and_a_result_on_trunk() -> None:
@@ -43,7 +42,9 @@ def test_trunk_evidence_needs_the_submitted_head_or_its_rewrite_and_a_result_on_
     merged_moved = _moved_head().model_copy(
         update={"state": "merged", "merge_commit_sha": "merge-1"}
     )
-    rows: tuple[tuple[GithubPR, bool, CommitAncestry, CommitAncestry | None, str | None], ...] = (
+    rows: tuple[
+        tuple[GithubPullRequest, bool, CommitAncestry, CommitAncestry | None, str | None], ...
+    ] = (
         (_pr(), False, "on_trunk", None, "exact"),
         (_pr(), False, "not_on_trunk", None, None),
         (_pr(), False, "unresolved", None, None),

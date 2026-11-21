@@ -6,11 +6,11 @@ from collections.abc import Sequence
 
 import jj_stack.ui as ui
 from jj_stack.errors import CliError, UnsupportedStackError
+from jj_stack.forge.github.models import GithubRepo
 from jj_stack.forge.github.resolution import resolve_trunk_branch
 from jj_stack.identifiers import CommitId
 from jj_stack.jj.client import JjClient
 from jj_stack.models.git import GitRemote
-from jj_stack.models.github import GithubRepo
 from jj_stack.models.stack import LocalCommit
 
 

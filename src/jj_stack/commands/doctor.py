@@ -22,20 +22,20 @@ import jj_stack.console as console
 import jj_stack.ui as ui
 from jj_stack.bootstrap import CommandContext, GlobalOptions, bootstrap_context
 from jj_stack.errors import CliError, error_message
+from jj_stack.forge.errors import ForgeError
 from jj_stack.forge.github import resolution
 from jj_stack.forge.github.auth import github_token, github_token_from_env
 from jj_stack.forge.github.client import (
     GithubClient,
-    GithubClientError,
 )
 from jj_stack.forge.github.error_messages import repo_lookup_reason
+from jj_stack.forge.github.models import GithubRepo
 from jj_stack.forge.github.resolution import (
     GithubRepoAddress,
     select_submit_remote,
 )
 from jj_stack.forge.github.stack_availability import github_stacks_unavailable_error
 from jj_stack.models.git import GitRemote
-from jj_stack.models.github import GithubRepo
 from jj_stack.pr_branch_namespace import current_pr_branch_namespace
 from jj_stack.state.operation_lock import operation_lock
 from jj_stack.ui import Message
@@ -291,7 +291,7 @@ async def _check_github_access(
     async with context.open_github_client(repo=parsed_repo, token=token) as client:
         try:
             github_repo = await client.get_repo()
-        except GithubClientError as error:
+        except ForgeError as error:
             reason = repo_lookup_reason(error)
         else:
             return [
@@ -337,7 +337,7 @@ async def _check_github_stacks(
 ) -> CheckResult:
     try:
         await client.list_stacks()
-    except GithubClientError as error:
+    except ForgeError as error:
         unavailable = github_stacks_unavailable_error(
             error=error,
             repo=parsed_repo.full_name,

@@ -9,16 +9,27 @@ import httpx2
 import pytest
 
 from jj_stack.errors import CliError
-from jj_stack.forge.github.client import GithubClient, GithubClientError
+from jj_stack.forge.errors import ForgeError
+from jj_stack.forge.github.client import REPO_NOT_FOUND_REASON, GithubClient
+from jj_stack.forge.github.models import DEFAULT_PR_TEMPLATE_PATHS, GithubPullRequest
 from jj_stack.forge.github.overview_comments import delete_stack_overview_comment
 from jj_stack.forge.github.resolution import GithubRepoAddress
+from jj_stack.forge.models import BranchRef, PRHead
 from jj_stack.identifiers import CommitId
-from jj_stack.models.github import (
-    DEFAULT_PR_TEMPLATE_PATHS,
-    GithubBranchRef,
-    GithubPR,
-    GithubPRHead,
-)
+
+
+def _observed_pr(
+    number: int,
+) -> GithubPullRequest:
+    return GithubPullRequest(
+        base=BranchRef(ref="main"),
+        head=PRHead(ref=f"jj-stack/{number}", sha="a" * 40),
+        html_url=f"https://github.test/octo-org/stacked-prs/pull/{number}",
+        node_id=f"PR_{number}",
+        number=number,
+        state="open",
+        title=f"PR {number}",
+    )
 
 
 def _github_client(handler) -> GithubClient:
@@ -106,9 +117,9 @@ def test_pr_template_uses_githubs_default_without_selecting_a_named_template(
 
 @pytest.mark.parametrize("changed", [None, "head", "base", "merge"])
 def test_merge_details_paginate_without_mixing_pr_heads_or_bases(changed: str | None) -> None:
-    pr = GithubPR(
-        base=GithubBranchRef(ref="main"),
-        head=GithubPRHead(ref="feature", sha="a" * 40),
+    pr = GithubPullRequest(
+        base=BranchRef(ref="main"),
+        head=PRHead(ref="feature", sha="a" * 40),
         html_url="https://github.test/octo-org/stacked-prs/pull/1",
         node_id="PR_1",
         number=1,
@@ -208,11 +219,12 @@ def test_merge_details_paginate_without_mixing_pr_heads_or_bases(changed: str | 
         async with _github_client(handler) as client:
             return await client.get_pr_merge_details(prs=(pr,))
 
-    details = asyncio.run(run_test())[1]
+    progress = asyncio.run(run_test())[1]
     if changed:
-        assert details is None
+        assert progress is None
     else:
-        assert details is not None
+        assert progress is not None and progress.merge_details is not None
+        details = progress.merge_details
         assert len(details.merge_checks) == 101
         assert len(details.unresolved_threads) == 1
         thread = details.unresolved_threads[0]
@@ -225,9 +237,36 @@ def test_merge_details_paginate_without_mixing_pr_heads_or_bases(changed: str | 
             ("deploy", "PENDING", "https://check"),
         ]
         assert details.checks[-2].is_required
-        assert (details.checks[-2].run_id, details.checks[-2].app_id) == (20, 1)
-        assert details.checks[-2].workflow_id == 2
         assert not details.checks[-1].is_required
+
+
+@pytest.mark.parametrize(
+    ("mergeable", "conflicts"), (("CONFLICTING", True), ("MERGEABLE", False))
+)
+def test_merge_details_report_a_conflicting_merge_as_conflicts(
+    mergeable: str,
+    conflicts: bool,
+) -> None:
+    pr = _observed_pr(1)
+    page = {
+        "headRefOid": pr.head.sha,
+        "baseRefName": pr.base.ref,
+        "mergeable": mergeable,
+        "reviewThreads": {"nodes": [], "pageInfo": {"hasNextPage": False}},
+    }
+
+    def handler(request: httpx2.Request) -> httpx2.Response:
+        return httpx2.Response(200, json={"data": {"repository": {"pr_1": page}}})
+
+    async def run_test():
+        async with _github_client(handler) as client:
+            return await client.get_pr_merge_details(prs=(pr,))
+
+    progress = asyncio.run(run_test())[1]
+
+    assert progress is not None and progress.merge_details is not None
+    assert progress.conflicts is conflicts
+    assert progress.merge_details.mergeable == mergeable
 
 
 def test_github_client_caps_and_announces_a_long_rate_limit_wait(
@@ -317,7 +356,7 @@ def test_github_client_does_not_retry_non_rate_limited_errors() -> None:
         async with _github_client(handler) as client:
             await client.get_repo()
 
-    with pytest.raises(GithubClientError, match="GitHub request failed: 404"):
+    with pytest.raises(ForgeError, match=r"request failed \(GitHub 404: Not Found\)"):
         asyncio.run(run_test())
 
     assert attempts == 1
@@ -342,7 +381,7 @@ def test_github_client_rejects_an_unusable_success_response(body: str, reason: s
         async with _github_client(handler) as client:
             await client.get_repo()
 
-    with pytest.raises(GithubClientError, match=f"repo lookup response {reason}"):
+    with pytest.raises(ForgeError, match=f"repo lookup response {reason}"):
         asyncio.run(run_test())
 
 
@@ -380,7 +419,7 @@ def test_github_client_sends_only_supplied_pr_updates(
     async def run_test() -> None:
         async with _github_client(handler) as client:
             await client.update_pr(
-                pr_id="PR_7",
+                pr=_observed_pr(7),
                 base=base,
                 body=body,
                 title=title,
@@ -482,7 +521,7 @@ def test_github_client_fails_the_whole_stack_listing_on_an_unexpected_payload() 
         async with _github_client(handler) as client:
             await client.list_stacks()
 
-    with pytest.raises(GithubClientError, match="stack list response had invalid data"):
+    with pytest.raises(ForgeError, match="stack list response had invalid data"):
         asyncio.run(run_test())
 
 
@@ -570,9 +609,8 @@ def test_github_client_batches_pr_lookup_by_number_with_graphql() -> None:
 
     async def run_test() -> tuple[str, str, str | None, bool, str | None, bool]:
         async with _github_client(handler) as client:
-            prs = await client.get_prs_by_numbers(
+            prs = await client.get_merge_queue_prs(
                 pr_numbers=(7, 9, 11, *range(100, 124)),
-                merge_progress=True,
             )
         pr_7 = prs[7]
         pr_9 = prs[9]
@@ -587,8 +625,8 @@ def test_github_client_batches_pr_lookup_by_number_with_graphql() -> None:
             pr_7.head.ref,
             pr_9.state,
             pr_7.head.label,
-            pr_7.is_queued,
-            pr_7.check_rollup_status,
+            pr_7.queued,
+            pr_7.progress.check_rollup_status if pr_7.progress else None,
             prs[11] is None,
         )
 
@@ -736,7 +774,7 @@ def test_github_client_detects_merge_queue_branch_rule() -> None:
                     "Could not resolve to a Repository with the name 'octo-org/stacked-prs'."
                 ),
             },
-            "Could not resolve to a Repository",
+            REPO_NOT_FOUND_REASON,
             id="not-found-for-the-repository-itself",
         ),
         pytest.param(
@@ -765,13 +803,13 @@ def test_github_client_fails_closed_on_graphql_errors_that_are_not_a_missing_ali
         async with _github_client(handler) as client:
             await client.get_prs_by_numbers(pr_numbers=(7,))
 
-    with pytest.raises(GithubClientError) as raised:
+    with pytest.raises(ForgeError) as raised:
         asyncio.run(run_test())
 
     assert expected_detail in str(raised.value)
-    # `is_repo_not_found` keys on NOT_FOUND at the repository path, so only the first row
-    # reports it.
-    assert raised.value.is_repo_not_found() == (error_entry["type"] == "NOT_FOUND")
+    # Only NOT_FOUND at the repository path reads as a missing repo.
+    expected_kind = "not_found" if error_entry["type"] == "NOT_FOUND" else "unavailable"
+    assert raised.value.kind == expected_kind
 
 
 def test_github_client_rejects_graphql_payload_missing_repo_data() -> None:
@@ -789,7 +827,7 @@ def test_github_client_rejects_graphql_payload_missing_repo_data() -> None:
                 pr_numbers=(7,),
             )
 
-    with pytest.raises(GithubClientError, match="invalid repo data"):
+    with pytest.raises(ForgeError, match="invalid repo data"):
         asyncio.run(run_test())
 
 
@@ -808,7 +846,7 @@ def test_github_client_rejects_incomplete_pr_connection() -> None:
                 base_refs=("jj-stack/seven",),
             )
 
-    with pytest.raises(GithubClientError, match="invalid repo data: base_0 Field required"):
+    with pytest.raises(ForgeError, match="invalid repo data: base_0 Field required"):
         asyncio.run(run_test())
 
 
@@ -883,7 +921,7 @@ def test_github_client_batches_open_pr_lookup_by_head_ref_with_graphql() -> None
             pr_7.head.ref,
             pr_9.state,
             pr_7.head.label,
-            pr_7.review_decision,
+            pr_7.progress.review_decision if pr_7.progress else None,
         )
 
     assert asyncio.run(run_test()) == (
@@ -1063,18 +1101,44 @@ def test_github_client_quotes_githubs_own_explanation_for_a_refusal(
         async with _github_client(handler) as client:
             await client.add_labels(issue_number=1, labels=["x"])
 
-    with pytest.raises(GithubClientError) as raised:
+    with pytest.raises(ForgeError) as raised:
         asyncio.run(run_test())
 
     assert raised.value.user_facing_reason() == expected_reason
+    assert raised.value.kind == "invalid"
 
 
-def test_user_facing_reason_reports_auth_failure_for_401() -> None:
-    error = GithubClientError("GitHub request failed: 401", status_code=401)
+@pytest.mark.parametrize(
+    ("status", "expected_kind", "expected_reason"),
+    (
+        (
+            401,
+            "auth",
+            "authentication failed - check GITHUB_TOKEN, GH_TOKEN, or your gh login",
+        ),
+        (409, "conflict", "request failed (GitHub 409: Refused)"),
+        (502, "unavailable", "request failed (GitHub 502: Refused)"),
+        (410, "other", "request failed (GitHub 410: Refused)"),
+    ),
+)
+def test_github_client_classifies_a_failed_status(
+    status: int,
+    expected_kind: str,
+    expected_reason: str,
+) -> None:
+    def handler(request: httpx2.Request) -> httpx2.Response:
+        return httpx2.Response(status, json={"message": "Refused"}, request=request)
 
-    assert (
-        error.user_facing_reason()
-        == "authentication failed - check GITHUB_TOKEN, GH_TOKEN, or your gh login"
+    async def run_test() -> None:
+        async with _github_client(handler) as client:
+            await client.close_pr(pr_number=1)
+
+    with pytest.raises(ForgeError) as raised:
+        asyncio.run(run_test())
+
+    assert (raised.value.kind, raised.value.user_facing_reason()) == (
+        expected_kind,
+        expected_reason,
     )
 
 
@@ -1121,10 +1185,11 @@ def test_github_client_reports_an_exhausted_rate_limit_as_a_rate_limit(
         async with _github_client(handler) as client:
             await client.get_repo()
 
-    with pytest.raises(GithubClientError) as raised:
+    with pytest.raises(ForgeError) as raised:
         asyncio.run(run_test())
 
     assert raised.value.user_facing_reason() == expected_reason
+    assert raised.value.kind == "rate_limited"
 
 
 def test_github_client_reports_a_permissions_403_as_access_denied() -> None:
@@ -1150,13 +1215,14 @@ def test_github_client_reports_a_permissions_403_as_access_denied() -> None:
         async with _github_client(handler) as client:
             await client.get_repo()
 
-    with pytest.raises(GithubClientError) as raised:
+    with pytest.raises(ForgeError) as raised:
         asyncio.run(run_test())
 
     assert (
         raised.value.user_facing_reason()
         == "access denied - check that your token can access the repo"
     )
+    assert raised.value.kind == "auth"
     # Waiting cannot fix a permissions failure, so it must not be retried either.
     assert attempts == 1
 

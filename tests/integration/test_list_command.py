@@ -7,8 +7,8 @@ import httpx2
 import pytest
 
 from jj_stack.errors import EXIT_INCOMPLETE
+from jj_stack.forge.github.details import GithubReviewThread
 from jj_stack.jj.client import JjClient
-from jj_stack.models.github_details import GithubReviewThread
 from jj_stack.state.store import TrackingStore
 
 from ..support.fake_github import FakeMergeRequirements, create_app

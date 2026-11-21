@@ -6,10 +6,11 @@ from collections.abc import Collection, Sequence
 
 import jj_stack.ui as ui
 from jj_stack.errors import CliError
-from jj_stack.forge.github.client import GithubClient, GithubClientError
+from jj_stack.forge.errors import ForgeError
+from jj_stack.forge.github.client import GithubClient
+from jj_stack.forge.github.models import GithubStack
 from jj_stack.forge.github.resolution import GithubRepoAddress
 from jj_stack.formatting import format_pr_number
-from jj_stack.models.github import GithubStack
 
 
 def require_merged_prefix(stack: GithubStack) -> GithubStack:
@@ -90,8 +91,8 @@ async def dissolve_github_stack(
 
     try:
         remaining = await github_client.unstack(stack_number=stack.number)
-    except GithubClientError as error:
-        if error.status_code == 422:
+    except ForgeError as error:
+        if error.kind == "invalid":
             raise CliError(
                 t"GitHub could not remove any pull requests from stack #{stack.number}.",
                 hint=t"Resolve its locked pull requests, then retry "

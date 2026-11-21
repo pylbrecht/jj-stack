@@ -6,8 +6,8 @@ from dataclasses import dataclass
 
 from jj_stack.bootstrap import CommandContext
 from jj_stack.forge.github.client import GithubClient
+from jj_stack.forge.github.models import GithubRepo
 from jj_stack.forge.github.resolution import GithubTarget
-from jj_stack.models.github import GithubRepo
 
 
 @dataclass(frozen=True, slots=True)

@@ -6,9 +6,9 @@ from dataclasses import replace
 
 import jj_stack.ui as ui
 from jj_stack.errors import CliError
+from jj_stack.forge.github.models import GithubStack
 from jj_stack.formatting import format_pr_label
 from jj_stack.identifiers import ChangeId, CommitId, short_change_id, short_commit_id
-from jj_stack.models.github import GithubStack
 from jj_stack.models.stack import LocalCommit
 from jj_stack.models.tracking import TrackedPR
 from jj_stack.stack.change_state import (

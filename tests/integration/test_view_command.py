@@ -6,10 +6,12 @@ import subprocess
 from pathlib import Path
 
 from jj_stack.errors import EXIT_AMBIGUOUS, EXIT_FAILURE, EXIT_INCOMPLETE, EXIT_NO_STACK
-from jj_stack.forge.github.client import GithubClient, GithubClientError
+from jj_stack.forge.errors import ForgeError
+from jj_stack.forge.github.client import GithubClient
+from jj_stack.forge.github.details import GithubReviewThread
+from jj_stack.forge.models import Check, MergeDetails, PRProgress, ReviewThread
 from jj_stack.identifiers import short_change_id
 from jj_stack.jj.client import JjClient
-from jj_stack.models.github_details import GithubCheck, GithubPRMergeDetails, GithubReviewThread
 from jj_stack.state.store import TrackingStore, resolve_state_path
 
 from ..support.fake_github import FakeMergeRequirements, create_app
@@ -45,31 +47,33 @@ def test_verbose_view_omits_details_on_lookup_failure_and_shows_evidence_on_retr
     fake_repo.branch_protection["main"] = FakeMergeRequirements(reviews=1)
     fake_repo.create_pr_review(pr_number=1, reviewer_login="alice", state="APPROVED")
     thread_url = "https://github.test/octo-org/stacked-prs/pull/1#discussion_r4010947684"
-    evidence = GithubPRMergeDetails(
+    evidence = MergeDetails(
         unresolved_threads=(
-            GithubReviewThread.model_validate(
-                {
-                    "isResolved": False,
-                    "isOutdated": True,
-                    "path": "workflow.yml",
-                    "line": 7,
-                    "comments": {
-                        "nodes": [{"bodyText": "Use Buildkite instead", "url": thread_url}]
-                    },
-                }
+            ReviewThread(
+                is_resolved=False,
+                is_outdated=True,
+                path="workflow.yml",
+                line=7,
+                body="Use Buildkite instead",
+                url=thread_url,
             ),
         ),
         checks=(
-            GithubCheck(name="build", state="FAILURE", url="https://check.test/build"),
-            GithubCheck(name="deploy", state="PENDING"),
+            Check(name="build", state="FAILURE", url="https://check.test/build"),
+            Check(name="deploy", state="PENDING"),
         ),
     )
     details_unavailable = True
 
     async def get_details(self, *, prs):
         if details_unavailable:
-            raise GithubClientError("GitHub request failed: 403", status_code=403)
-        return {pr.number: evidence for pr in prs}
+            raise ForgeError("GitHub request failed: 403", kind="auth")
+        return {
+            pr.number: (pr.progress or PRProgress()).model_copy(
+                update={"merge_details": evidence}
+            )
+            for pr in prs
+        }
 
     monkeypatch.setattr(GithubClient, "get_pr_merge_details", get_details)
 
@@ -108,7 +112,7 @@ def test_verbose_view_omits_details_on_lookup_failure_and_shows_evidence_on_retr
     assert pr["merge_details"] == evidence.model_dump(mode="json")
 
     # Resolving threads and completing checks may leave an unrelated GitHub rule unmet.
-    evidence = GithubPRMergeDetails(checks=(GithubCheck(name="build", state="SUCCESS"),))
+    evidence = MergeDetails(checks=(Check(name="build", state="SUCCESS"),))
     assert run_main(repo, config_path, "view", "--verbose") == 0
     assert "merge blocked" not in capsys.readouterr().out
 
@@ -497,12 +501,9 @@ def test_view_preserves_saved_identity_when_github_lookup_fails(
 
     class FailingPRLookupClient(GithubClient):
         async def get_open_prs_by_head_refs(self, *, head_refs):
-            raise GithubClientError(
-                "GitHub request failed: 403",
-                body='{"message":"Forbidden"}',
-                rate_limit="primary",
-                rate_limit_reset_seconds=3600,
-                status_code=403,
+            raise ForgeError(
+                "GitHub primary rate limit reached, resets in about 60 min - rerun later",
+                kind="rate_limited",
             )
 
     patch_github_client_builders(

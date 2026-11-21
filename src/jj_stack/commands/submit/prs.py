@@ -7,9 +7,11 @@ from collections.abc import Awaitable, Callable, Sequence
 import jj_stack.ui as ui
 from jj_stack.concurrency import run_bounded_tasks
 from jj_stack.errors import CliError
-from jj_stack.forge.github.client import GithubClient, GithubClientError
+from jj_stack.forge.errors import ForgeError
+from jj_stack.forge.github.client import GithubClient
+from jj_stack.forge.github.models import GithubPRReview
+from jj_stack.forge.models import PullRequest
 from jj_stack.formatting import format_pr_number
-from jj_stack.models.github import GithubPR, GithubPRReview
 from jj_stack.models.tracking import (
     PRIdentity,
     SubmittedBaseline,
@@ -30,14 +32,14 @@ async def _github_request[Result](
 ) -> Result:
     try:
         return await request
-    except GithubClientError as error:
+    except ForgeError as error:
         raise CliError(error_message) from error
 
 
 async def load_re_request_reviewers(
     *,
     github_client: GithubClient,
-    prs: tuple[GithubPR, ...],
+    prs: tuple[PullRequest, ...],
 ) -> dict[int, list[str]]:
     reviews = await run_bounded_tasks(
         items=prs,
@@ -60,7 +62,7 @@ async def sync_prs(
     repository_id: str,
     state_store: TrackingStore,
     on_progress: Callable[[], None],
-) -> tuple[tuple[PRSyncPlan, GithubPR], ...]:
+) -> tuple[tuple[PRSyncPlan, PullRequest], ...]:
     submitted_changes = await run_bounded_tasks(
         items=plans,
         run_item=lambda plan: _sync_pr(
@@ -80,7 +82,7 @@ async def _sync_pr(
     plan: PRSyncPlan,
     repository_id: str,
     state_store: TrackingStore,
-) -> tuple[PRSyncPlan, GithubPR]:
+) -> tuple[PRSyncPlan, PullRequest]:
     prepared_change = plan.prepared
     branch = prepared_change.branch
     change_id = prepared_change.change.change_id
@@ -103,7 +105,7 @@ async def _sync_pr(
         pr_number = format_pr_number(pr.number, url=pr.html_url)
         pr = await _github_request(
             github_client.update_pr(
-                pr_id=pr.node_id,
+                pr=pr,
                 base=updates.base,
                 body=updates.body,
                 title=updates.title,
@@ -139,8 +141,8 @@ async def _apply_draft_action(
     *,
     action: PRDraftAction | None,
     github_client: GithubClient,
-    pr: GithubPR,
-) -> GithubPR:
+    pr: PullRequest,
+) -> PullRequest:
     if action is None:
         return pr
     pr_number = format_pr_number(pr.number, url=pr.html_url)
@@ -151,7 +153,7 @@ async def _apply_draft_action(
         t"{github_client.repo.full_name}"
     )
     return await _github_request(
-        github_client.set_pr_draft(pr_id=pr.node_id, draft=action == "draft"),
+        github_client.set_pr_draft(pr=pr, draft=action == "draft"),
         error_message=message,
     )
 
@@ -199,7 +201,7 @@ async def _sync_pr_metadata(
                 issue_number=pr_number,
                 labels=labels,
             )
-    except GithubClientError as error:
+    except ForgeError as error:
         pr_label = format_pr_number(pr_number, repo=github_client.repo)
         raise CliError(
             t"Could not update the reviewers or labels of pull request {pr_label}"

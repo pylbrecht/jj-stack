@@ -8,7 +8,8 @@ from pathlib import Path
 import httpx2
 import pytest
 
-from jj_stack.forge.github.client import GithubClient, GithubClientError
+from jj_stack.forge.errors import ForgeError
+from jj_stack.forge.github.client import GithubClient
 from jj_stack.forge.github.resolution import GithubRepoAddress
 
 from ..support.fake_github import create_app
@@ -32,13 +33,14 @@ def test_fake_rejects_retargets_that_github_cannot_apply(tmp_path: Path) -> None
             httpx2.AsyncClient(base_url="https://api.github.test", transport=transport),
             repo=GithubRepoAddress(owner=fake.owner, repo=fake.name),
         ) as github:
-            with pytest.raises(GithubClientError):
-                await github.update_pr(pr_id=pr.node_id, base="landed")
+            observed = await github.get_pr(pr_number=1)
+            with pytest.raises(ForgeError):
+                await github.update_pr(pr=observed, base="landed")
             assert (pr.base_ref, pr.state, pr.merged_at) == ("main", "open", None)
 
             await github.close_pr(pr_number=1)
-            with pytest.raises(GithubClientError):
-                await github.update_pr(pr_id=pr.node_id, base="landed")
+            with pytest.raises(ForgeError):
+                await github.update_pr(pr=observed, base="landed")
             assert pr.base_ref == "main"
 
     asyncio.run(exercise())

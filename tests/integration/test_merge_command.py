@@ -8,8 +8,9 @@ import pytest
 from jj_stack.commands.merge import command as merge_command
 from jj_stack.commands.merge.checks import ChecksPending
 from jj_stack.commands.merge.github_stack import PendingMerge
-from jj_stack.errors import EXIT_GITHUB, CliError
-from jj_stack.forge.github.client import GithubClient, GithubClientError
+from jj_stack.errors import EXIT_FORGE, CliError
+from jj_stack.forge.errors import ForgeError
+from jj_stack.forge.github.client import GithubClient
 from jj_stack.forge.github.overview_comments import STACK_OVERVIEW_COMMENT_MARKER
 from jj_stack.jj.client import JjClient
 from jj_stack.state.operation_lock import try_acquire_operation_lock
@@ -395,7 +396,7 @@ def test_merge_queue_lookup_failure_stops_before_requesting_a_merge(
 
     class QueueLookupFailureClient(GithubClient):
         async def base_branch_uses_merge_queue(self, *, branch):
-            raise GithubClientError(f"could not inspect {branch}")
+            raise ForgeError(f"could not inspect {branch}", kind="unavailable")
 
     patch_github_client_builders(
         monkeypatch,
@@ -407,7 +408,7 @@ def test_merge_queue_lookup_failure_stops_before_requesting_a_merge(
     exit_code = run_main(repo, config_path, "merge")
     captured = capsys.readouterr()
 
-    assert exit_code == EXIT_GITHUB, (captured.out, captured.err)
+    assert exit_code == EXIT_FORGE, (captured.out, captured.err)
     assert fake_repo.stack_merge_requests == []
     assert fake_repo.prs[1].merged_at is None
     assert_output_contains(captured.err, "uses a merge queue", "could not inspect main")
@@ -715,7 +716,7 @@ def test_stack_merge_resumes_a_matching_request_after_a_lost_response(
                 method=method,
                 pr_number=pr_number,
             )
-            raise GithubClientError("lost submit response")
+            raise ForgeError("lost submit response", kind="unavailable")
 
     patch_github_client_builders(
         monkeypatch,

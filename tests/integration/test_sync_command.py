@@ -7,8 +7,9 @@ from pathlib import Path
 import pytest
 
 import jj_stack.commands.sync_apply as sync_apply
-from jj_stack.errors import EXIT_GITHUB, EXIT_INCOMPLETE, CliError
-from jj_stack.forge.github.client import GithubClient, GithubClientError
+from jj_stack.errors import EXIT_FORGE, EXIT_INCOMPLETE, CliError
+from jj_stack.forge.errors import ForgeError
+from jj_stack.forge.github.client import GithubClient
 from jj_stack.identifiers import short_change_id, short_commit_id
 from jj_stack.jj.client import JjClient
 from jj_stack.state.store import TrackingStore
@@ -459,11 +460,11 @@ def test_sync_all_finishes_a_merged_pr_by_syncing_the_stack_of_its_open_prs(
 
     async def load_comments_or_fail(self, **kwargs):
         if fail_comments:
-            raise GithubClientError("Comment lookup unavailable", status_code=503)
+            raise ForgeError("Comment lookup unavailable", kind="unavailable")
         return await load_comments(self, **kwargs)
 
     monkeypatch.setattr(GithubClient, "find_issue_comments_and_revisions", load_comments_or_fail)
-    assert run_main(repo, config_path, "sync", survivor.change_id) == EXIT_GITHUB
+    assert run_main(repo, config_path, "sync", survivor.change_id) == EXIT_FORGE
     capsys.readouterr()
     jj = JjClient(repo)
     assert on_trunk.change_id in state_store.load().prs
@@ -489,14 +490,16 @@ def test_sync_all_reports_batch_pr_failure_without_traceback(
     config_path = configure_submit_environment(monkeypatch, tmp_path, fake_repo)
 
     async def fail_batch_lookup(self, *, pr_numbers):
-        raise GithubClientError("GitHub pull request batch lookup failed: unavailable")
+        raise ForgeError(
+            "GitHub pull request batch lookup failed: unavailable", kind="unavailable"
+        )
 
     monkeypatch.setattr(GithubClient, "get_prs_by_numbers", fail_batch_lookup)
 
     exit_code = run_main(repo, config_path, "sync", "--all")
     captured = capsys.readouterr()
 
-    assert exit_code == EXIT_GITHUB
+    assert exit_code == EXIT_FORGE
     assert "Could not inspect pull requests" in captured.err
     assert "unavailable" in captured.err
     assert "Traceback" not in captured.err
@@ -867,7 +870,7 @@ def test_post_merge_sync_recovers_an_amended_survivor_after_comment_failure(
 
     async def load_comments_or_fail(self, **kwargs):
         if fail_comments:
-            raise GithubClientError("Comment lookup unavailable", status_code=503)
+            raise ForgeError("Comment lookup unavailable", kind="unavailable")
         return await load_comments(self, **kwargs)
 
     monkeypatch.setattr(GithubClient, "find_issue_comments_and_revisions", load_comments_or_fail)
@@ -875,7 +878,7 @@ def test_post_merge_sync_recovers_an_amended_survivor_after_comment_failure(
     exit_code = run_main(repo, config_path, "merge", "--pull-request", "1")
     captured = capsys.readouterr()
 
-    assert exit_code == EXIT_GITHUB, (captured.out, captured.err)
+    assert exit_code == EXIT_FORGE, (captured.out, captured.err)
     error = " ".join(captured.err.split())
     assert "Continue with jj-stack sync" not in error
     assert f"jj-stack submit {survivor.change_id[:8]}" in error

@@ -19,9 +19,9 @@ from typing import TypedDict, final, overload
 
 import jj_stack.ui as ui
 from jj_stack.errors import CliError, DriftCondition, DriftError
+from jj_stack.forge.models import PullRequest
 from jj_stack.formatting import format_pr_label
 from jj_stack.identifiers import ChangeId, CommitId, short_change_id
-from jj_stack.models.github import GithubPR
 from jj_stack.models.stack import LocalCommit, LocalStack
 from jj_stack.models.tracking import PRIdentity, TrackedPR, TrackingState
 from jj_stack.stack.trunk_evidence import (
@@ -62,8 +62,8 @@ class ChangeObservation:
     # The copy in the selected stack, when the command selected one.
     selected: LocalCommit | None = None
     # The saved pull request looked up by number; None when GitHub reports none.
-    pr: GithubPR | None | Unobserved | ObservationFailed = UNOBSERVED
-    open_prs_on_branch: tuple[GithubPR, ...] | Unobserved | ObservationFailed = UNOBSERVED
+    pr: PullRequest | None | Unobserved | ObservationFailed = UNOBSERVED
+    open_prs_on_branch: tuple[PullRequest, ...] | Unobserved | ObservationFailed = UNOBSERVED
     # The commit at branch@remote; None when the branch is absent.
     remote_target: CommitId | None | Unobserved = UNOBSERVED
     # The parent of a moved PR head that holds only the submitted change, as `pr_rewrites`
@@ -77,8 +77,8 @@ class TrackedPRObservation(ChangeObservation):
 
     tracked: TrackedPR
     remote_name: str
-    pr: GithubPR | None
-    open_prs_on_branch: tuple[GithubPR, ...] | Unobserved = UNOBSERVED
+    pr: PullRequest | None
+    open_prs_on_branch: tuple[PullRequest, ...] | Unobserved = UNOBSERVED
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -108,7 +108,7 @@ class WithPR(_State):
     """A state GitHub reported a pull request for."""
 
     tracked: TrackedPR
-    pr: GithubPR
+    pr: PullRequest
     # The commit at branch@remote, when observed; None when the branch is absent.
     remote_target: CommitId | None | Unobserved
     # Why PR or ancestry checks did not confirm the submitted work on trunk.
@@ -222,7 +222,7 @@ class LookupFailed(Stop, _State):
 @dataclass(frozen=True, kw_only=True)
 class PRMissing(Stop, _State):
     tracked: TrackedPR
-    open_prs_on_branch: tuple[GithubPR, ...]
+    open_prs_on_branch: tuple[PullRequest, ...]
 
     @property
     def drift_condition(self) -> DriftCondition:
@@ -262,7 +262,7 @@ class PRIdentityMismatch(Stop, WithPR):
 
 @dataclass(frozen=True, kw_only=True)
 class PRAmbiguous(Stop, _State):
-    open_prs_on_branch: tuple[GithubPR, ...]
+    open_prs_on_branch: tuple[PullRequest, ...]
 
     @property
     def drift_condition(self) -> DriftCondition:
@@ -283,7 +283,7 @@ class PRAmbiguous(Stop, _State):
 
 @dataclass(frozen=True, kw_only=True)
 class CompetingOpenPR(Stop, WithPR):
-    competitors: tuple[GithubPR, ...]
+    competitors: tuple[PullRequest, ...]
 
     @property
     def drift_condition(self) -> DriftCondition:
@@ -311,7 +311,7 @@ class CompetingOpenPR(Stop, WithPR):
 
 @dataclass(frozen=True, kw_only=True)
 class UntrackedPRExists(Stop, _State):
-    open_prs_on_branch: tuple[GithubPR, ...]
+    open_prs_on_branch: tuple[PullRequest, ...]
 
     @property
     def drift_condition(self) -> DriftCondition:
@@ -473,7 +473,7 @@ def _relink(change_id: ChangeId) -> Template:
     )
 
 
-def _pr_label(pr: GithubPR) -> Message:
+def _pr_label(pr: PullRequest) -> Message:
     return format_pr_label(pr.number, url=pr.html_url)
 
 
@@ -490,7 +490,7 @@ class _Common(TypedDict):
 
 class _WithPRCommon(_Common):
     tracked: TrackedPR
-    pr: GithubPR
+    pr: PullRequest
     remote_target: CommitId | None | Unobserved
     trunk_evidence_reason: Message | None
 
@@ -554,8 +554,8 @@ def classify(
 def _classify_pr(
     o: ChangeObservation,
     common: _Common,
-    open_prs: tuple[GithubPR, ...],
-    pr: GithubPR,
+    open_prs: tuple[PullRequest, ...],
+    pr: PullRequest,
     tracked: TrackedPR,
     evidence: TrunkEvidenceKind | None,
     reason: Message | None,
@@ -589,7 +589,7 @@ def _classify_pr(
 def _classify_untracked(
     o: ChangeObservation,
     common: _Common,
-    open_prs: tuple[GithubPR, ...],
+    open_prs: tuple[PullRequest, ...],
 ) -> ChangeState:
     if open_prs:
         return UntrackedPRExists(**common, tracked=None, open_prs_on_branch=open_prs)
@@ -602,7 +602,7 @@ def _classify_untracked(
 def _classify_open(
     o: ChangeObservation,
     with_pr: _WithPRCommon,
-    pr: GithubPR,
+    pr: PullRequest,
 ) -> LinkedPRState:
     baseline = with_pr["tracked"].submitted_baseline.commit_id
     head = pr.head.sha
@@ -618,7 +618,7 @@ def _classify_open(
         return PRHeadMoved(**with_pr, rewrite_checked=not isinstance(rewrite, Unobserved))
     # A queued pull request whose head and branch still agree with what was submitted waits
     # for GitHub; one that no longer agrees is reported as moved first.
-    if pr.is_queued:
+    if pr.queued:
         return Queued(**with_pr)
     if head != baseline:
         return PushedUnrecorded(**with_pr)
@@ -643,7 +643,7 @@ def _local_commit_ids(o: ChangeObservation) -> frozenset[CommitId]:
     return frozenset(ids)
 
 
-def live_pr(state: ChangeState) -> GithubPR | None:
+def live_pr(state: ChangeState) -> PullRequest | None:
     """The pull request GitHub reported for this state, if any."""
 
     return state.pr if isinstance(state, WithPR) else None

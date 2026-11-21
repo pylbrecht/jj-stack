@@ -4,7 +4,8 @@ import pytest
 
 import jj_stack.commands.submit.command as submit_command
 from jj_stack.errors import CliError
-from jj_stack.forge.github.client import GithubClient, GithubClientError
+from jj_stack.forge.errors import ForgeError
+from jj_stack.forge.github.client import GithubClient
 
 from .fake_github import create_app
 from .integration_helpers import patch_github_client_builders
@@ -29,30 +30,30 @@ def install_submit_fault(
             pr = await super().create_pr(title=title, **fields)
             if not failed and point == "create_pr" and title == target_title:
                 failed = True
-                raise GithubClientError(
+                raise ForgeError(
                     "Simulated pull request creation failure",
-                    status_code=500,
+                    kind="unavailable",
                 )
             return pr
 
         async def update_pr(
             self,
             *,
-            pr_id,
+            pr,
             base,
             body=None,
             title=None,
         ):
             nonlocal failed
             pr = await super().update_pr(
-                pr_id=pr_id,
+                pr=pr,
                 base=base,
                 body=body,
                 title=title,
             )
             if not failed and point == "update_pr" and pr.title == target_title:
                 failed = True
-                raise GithubClientError("Simulated pull request update failure", status_code=500)
+                raise ForgeError("Simulated pull request update failure", kind="unavailable")
             return pr
 
         async def find_issue_comments_by_body_marker(self, *, body_marker, pr_numbers):
@@ -61,7 +62,7 @@ def install_submit_fault(
             nonlocal failed
             if not failed and point == "cleanup":
                 failed = True
-                raise GithubClientError("Simulated comment lookup failure", status_code=503)
+                raise ForgeError("Simulated comment lookup failure", kind="unavailable")
             return await super().find_issue_comments_by_body_marker(
                 body_marker=body_marker, pr_numbers=pr_numbers
             )

@@ -5,8 +5,8 @@ from __future__ import annotations
 import jj_stack.console as console
 from jj_stack.concurrency import run_bounded_tasks
 from jj_stack.forge.github.client import GithubClient
+from jj_stack.forge.github.models import GithubIssueComment, GithubPRRevision
 from jj_stack.identifiers import CommitId, short_commit_id
-from jj_stack.models.github import GithubIssueComment, GithubPRRevision
 
 from .managed_comments import upsert_managed_comment
 

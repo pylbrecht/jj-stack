@@ -10,9 +10,9 @@ import jj_stack.console as console_module
 import jj_stack.ui as ui_module
 from jj_stack.commands._json_status import stack_change_json
 from jj_stack.commands.view_details import merge_details_hint
+from jj_stack.forge.github.models import GithubPullRequest
+from jj_stack.forge.models import BranchRef, PRHead, PRProgress, PRState
 from jj_stack.identifiers import ChangeId
-from jj_stack.models.github import GithubBranchRef, GithubPR, GithubPRHead, PRState
-from jj_stack.models.github_details import GithubMergeQueueEntry
 from jj_stack.models.tracking import PRIdentity, SubmittedBaseline, TrackedPR
 from jj_stack.stack.change_state import ChangeObservation, classify
 from jj_stack.stack.status import (
@@ -23,10 +23,10 @@ from tests.support.change_helpers import make_change
 from tests.support.tracking import make_pr_identity
 
 
-def _pr(*, base_ref: str = "main", number: int, state: PRState) -> GithubPR:
-    return GithubPR(
-        base=GithubBranchRef(ref=base_ref),
-        head=GithubPRHead(ref="jj-stack/feature", sha="commit-1"),
+def _pr(*, base_ref: str = "main", number: int, state: PRState) -> GithubPullRequest:
+    return GithubPullRequest(
+        base=BranchRef(ref=base_ref),
+        head=PRHead(ref="jj-stack/feature", sha="commit-1"),
         html_url=f"https://github.test/octo-org/repo/pull/{number}",
         node_id=f"PR_{number}",
         number=number,
@@ -52,8 +52,8 @@ def _status_change(
     commit_id: str = "commit-1",
     divergent: bool = False,
     conflict: bool = False,
-    pr: GithubPR,
-    competitors: tuple[GithubPR, ...] = (),
+    pr: GithubPullRequest,
+    competitors: tuple[GithubPullRequest, ...] = (),
     pr_identity: PRIdentity,
     submitted_baseline: SubmittedBaseline | None = None,
 ) -> StackStatusChange:
@@ -93,12 +93,17 @@ def _render_lines(*lines: ui_module.Renderable) -> tuple[str, ...]:
 def test_reporting_prefers_required_review_but_preserves_specific_merge_warnings(
     merge_status: str, merge_warning: str | None
 ) -> None:
+    progress = PRProgress(
+        review_decision="review_required",
+        ready=False,
+        blocked=merge_status == "BLOCKED",
+        conflicts=merge_status == "DIRTY",
+        merge_status=merge_status,
+    )
     change = _status_change(
         change_id="abcdefghijkl",
         pr_identity=make_pr_identity(head_ref="jj-stack/feature", pr_number=5),
-        pr=_pr(number=5, state="open").model_copy(
-            update={"review_decision": "review_required", "merge_state_status": merge_status}
-        ),
+        pr=_pr(number=5, state="open").model_copy(update={"progress": progress}),
     )
     payload = stack_change_json(change)
     assert payload["status"] == "review_required"
@@ -129,8 +134,12 @@ def test_list_keeps_review_counts_without_generic_merge_warning(other_needs_revi
             pr_identity=make_pr_identity(head_ref="jj-stack/feature", pr_number=number),
             pr=_pr(number=number, state="open").model_copy(
                 update={
-                    "review_decision": "review_required" if needs_review else None,
-                    "merge_state_status": "BLOCKED",
+                    "progress": PRProgress(
+                        review_decision="review_required" if needs_review else None,
+                        ready=False,
+                        blocked=True,
+                        merge_status="BLOCKED",
+                    )
                 }
             ),
         )
@@ -191,9 +200,7 @@ def test_view_advises_submit_when_selected_stack_changed_since_submit() -> None:
             pr_identity=make_pr_identity(head_ref="jj-stack/feature", pr_number=number),
             submitted_baseline=SubmittedBaseline(commit_id=f"submitted-{change_id}"),
             pr=_pr(number=number, state="open").model_copy(
-                update={
-                    "head": GithubPRHead(ref="jj-stack/feature", sha=f"submitted-{change_id}")
-                }
+                update={"head": PRHead(ref="jj-stack/feature", sha=f"submitted-{change_id}")}
             ),
         )
         for change_id, number in (("abcdefghijkl", 1), ("bcdefghijklm", 2))
@@ -213,9 +220,7 @@ def test_view_advises_submit_when_selected_stack_changed_since_submit() -> None:
     queued = _status_change(
         change_id="cdefghijklmn",
         pr_identity=make_pr_identity(head_ref="jj-stack/feature", pr_number=3),
-        pr=_pr(number=3, state="open").model_copy(
-            update={"merge_queue_entry": GithubMergeQueueEntry()}
-        ),
+        pr=_pr(number=3, state="open").model_copy(update={"queued": True}),
     )
     waiting_lines = _render_lines(
         *view_module.render_status_advisory_lines(
@@ -245,7 +250,7 @@ def test_view_sends_moved_pr_heads_to_sync_or_after_conflicts_to_submit(
             conflict=conflicted and index == len(moved) - 1,
             pr_identity=make_pr_identity(head_ref=f"jj-stack/{number}", pr_number=number),
             pr=_pr(number=number, state="open").model_copy(
-                update={"head": GithubPRHead(ref=f"jj-stack/{number}", sha="f" * 40)}
+                update={"head": PRHead(ref=f"jj-stack/{number}", sha="f" * 40)}
             ),
         )
         for index, (change_id, number) in enumerate(zip(moved, (8, 7), strict=False))
@@ -307,7 +312,7 @@ def test_reporting_surfaces_broken_links_before_suggesting_submit(
 ) -> None:
     pr = _pr(number=7, state="open")
     if status == "link_mismatch":
-        pr = pr.model_copy(update={"head": GithubPRHead(ref="other", sha="commit-1")})
+        pr = pr.model_copy(update={"head": PRHead(ref="other", sha="commit-1")})
     change = _status_change(
         change_id="abcdefgh1234",
         commit_id="rewritten",

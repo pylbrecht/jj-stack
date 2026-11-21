@@ -5,11 +5,12 @@ from __future__ import annotations
 import jj_stack.ui as ui
 from jj_stack.concurrency import run_bounded_tasks
 from jj_stack.errors import CliError
-from jj_stack.forge.github.client import GithubClient, GithubClientError
+from jj_stack.forge.errors import ForgeError
+from jj_stack.forge.github.client import GithubClient
+from jj_stack.forge.models import PullRequest
 from jj_stack.formatting import format_pr_label
 from jj_stack.identifiers import CommitId
 from jj_stack.jj.client import JjClient
-from jj_stack.models.github import GithubPR
 
 from .models import PRSyncPlan
 
@@ -17,7 +18,7 @@ from .models import PRSyncPlan
 async def retarget_pr_bases_before_branch_push(
     *,
     github_client: GithubClient,
-    prs: tuple[GithubPR, ...],
+    prs: tuple[PullRequest, ...],
     trunk_branch: str,
 ) -> None:
     """Move PR bases that would auto-close after the push to trunk first."""
@@ -37,7 +38,7 @@ def predict_prs_auto_closed_by_push(
     jj_client: JjClient,
     plans: tuple[PRSyncPlan, ...],
     remote_targets: dict[str, CommitId],
-) -> tuple[GithubPR, ...]:
+) -> tuple[PullRequest, ...]:
     """Pending PRs that GitHub will auto-close (as merged) after the planned push.
 
     GitHub auto-closes an open PR when its head ref becomes contained in its base
@@ -47,7 +48,7 @@ def predict_prs_auto_closed_by_push(
     """
 
     push_targets = {plan.prepared.branch: plan.prepared.change.commit_id for plan in plans}
-    candidates: list[tuple[CommitId, CommitId, GithubPR]] = []
+    candidates: list[tuple[CommitId, CommitId, PullRequest]] = []
     for plan in plans:
         pr = plan.prepared.pr
         if pr is None or pr.state != "open":
@@ -70,15 +71,15 @@ def predict_prs_auto_closed_by_push(
 async def _retarget_pr_base_before_branch_push(
     *,
     github_client: GithubClient,
-    pr: GithubPR,
+    pr: PullRequest,
     trunk_branch: str,
 ) -> None:
     try:
         await github_client.update_pr(
-            pr_id=pr.node_id,
+            pr=pr,
             base=trunk_branch,
         )
-    except GithubClientError as error:
+    except ForgeError as error:
         pr_label = format_pr_label(pr.number, url=pr.html_url)
         raise CliError(
             t"Could not retarget {pr_label} to "

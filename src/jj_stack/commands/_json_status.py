@@ -42,14 +42,15 @@ def pr_json(
 ) -> dict[str, object] | None:
     pr = change.pr
     if pr is not None:
+        progress = pr.progress
         values: dict[str, object] = {
-            "checks": pr.check_rollup_status,
-            "merge_state_status": pr.merge_state_status,
+            "checks": progress and progress.check_rollup_status,
+            "merge_state_status": progress and progress.merge_status,
             "number": pr.number,
             "url": pr.html_url,
         }
-        if pr.merge_details is not None:
-            values["merge_details"] = pr.merge_details.model_dump(mode="json")
+        if progress is not None and progress.merge_details is not None:
+            values["merge_details"] = progress.merge_details.model_dump(mode="json")
         return {key: value for key, value in values.items() if value is not None}
     return saved_pr_json(change.tracked.pr_identity) if change.tracked is not None else None
 

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from jj_stack.errors import EXIT_GITHUB
+from jj_stack.errors import EXIT_FORGE
 from jj_stack.state.store import TrackingStore
 
 from ..support.integration_helpers import (
@@ -116,7 +116,7 @@ def test_relink_reports_missing_pr_without_traceback(
     exit_code = run_main(repo, config_path, "relink", "999", change_id)
     captured = capsys.readouterr()
 
-    assert exit_code == EXIT_GITHUB
+    assert exit_code == EXIT_FORGE
     assert "Could not load pull request #999" in captured.err
     assert "Traceback" not in captured.err
 

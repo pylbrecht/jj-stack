@@ -5,10 +5,9 @@ from __future__ import annotations
 from textwrap import shorten
 
 import jj_stack.ui as ui
+from jj_stack.forge.models import MergeDetails, PullRequest
 from jj_stack.formatting import format_pr_label
 from jj_stack.identifiers import short_change_id
-from jj_stack.models.github import GithubPR
-from jj_stack.models.github_details import GithubPRMergeDetails
 from jj_stack.stack.reporting import report_change, status_label
 from jj_stack.stack.status import StatusResult
 
@@ -32,7 +31,7 @@ def render_merge_details(result: StatusResult) -> tuple[ui.Renderable, ...]:
     lines: list[ui.Renderable] = []
     for change in result.changes:
         pr = change.pr
-        if pr is None or (evidence := pr.merge_details) is None:
+        if pr is None or pr.progress is None or (evidence := pr.progress.merge_details) is None:
             continue
         if not (rows := _evidence_rows(pr, evidence)):
             continue
@@ -41,15 +40,14 @@ def render_merge_details(result: StatusResult) -> tuple[ui.Renderable, ...]:
     return tuple(lines)
 
 
-def _evidence_rows(
-    pr: GithubPR, details: GithubPRMergeDetails
-) -> list[tuple[ui.Message, ui.Message]]:
+def _evidence_rows(pr: PullRequest, details: MergeDetails) -> list[tuple[ui.Message, ui.Message]]:
     rows: list[tuple[ui.Message, ui.Message]] = []
-    if pr.review_decision in {"review_required", "changes_requested"}:
+    decision = pr.progress and pr.progress.review_decision
+    if decision in {"review_required", "changes_requested"}:
         rows.append(
             (
                 "Review",
-                t"{status_label(pr.review_decision)}: {ui.hyperlink(pr.html_url, pr.html_url)}",
+                t"{status_label(decision)}: {ui.hyperlink(pr.html_url, pr.html_url)}",
             )
         )
     for thread in details.unresolved_threads:

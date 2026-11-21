@@ -13,14 +13,12 @@ from jj_stack.commands.submit.overview_comments import sync_stack_overview_comme
 from jj_stack.commands.submit.revision_comments import _include_submitted_force_push
 from jj_stack.config import AppConfig
 from jj_stack.errors import CliError
-from jj_stack.forge.github.client import GithubClient, GithubClientError
+from jj_stack.forge.errors import ForgeError
+from jj_stack.forge.github.client import GithubClient
+from jj_stack.forge.github.models import GithubIssueComment, GithubPRRevision
 from jj_stack.forge.github.resolution import GithubRepoAddress
 from jj_stack.identifiers import CommitId
 from jj_stack.jj.client import JjClient
-from jj_stack.models.github import (
-    GithubIssueComment,
-    GithubPRRevision,
-)
 from jj_stack.models.stack import LocalStack
 from jj_stack.stack.change_state import ChangeObservation
 from jj_stack.stack.pr_branches import ResolvedPRBranch
@@ -48,7 +46,7 @@ def test_overview_comment_move_keeps_source_when_head_creation_fails() -> None:
         ) -> None:
             assert issue_number == 2
             assert body == source_comment.body
-            raise GithubClientError("create failed")
+            raise ForgeError("create failed", kind="unavailable")
 
         async def delete_issue_comment(self, *, comment_id: int) -> None:
             self.deleted_comment_ids.append(comment_id)
@@ -75,8 +73,8 @@ def test_first_submit_stops_when_github_rejects_the_open_pr_lookup() -> None:
     branch = "jj-stack/feature-abcdefgh"
 
     github = Mock(spec=GithubClient)
-    github.get_open_prs_by_head_refs.side_effect = GithubClientError(
-        "invalid lookup", status_code=422
+    github.get_open_prs_by_head_refs.side_effect = ForgeError(
+        "request failed (GitHub 422)", kind="invalid"
     )
 
     lookup = asyncio.run(

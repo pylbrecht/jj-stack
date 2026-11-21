@@ -1,4 +1,8 @@
-"""Observe a requested merge through completion, without storing operation progress."""
+"""Observe a requested merge through completion, without storing operation progress.
+
+Waiting in GitHub's merge queue reads GitHub's own queue entry, so this module uses the GitHub
+pull request model rather than the forge-neutral one.
+"""
 
 from __future__ import annotations
 
@@ -9,10 +13,15 @@ from math import ceil
 import jj_stack.console as console
 import jj_stack.ui as ui
 from jj_stack.errors import CliError, DriftError
-from jj_stack.forge.github.client import GithubClient, GithubClientError
+from jj_stack.forge.errors import ForgeError
+from jj_stack.forge.github.client import GithubClient
+from jj_stack.forge.github.models import (
+    GithubPullRequest,
+    GithubStackMerge,
+    GithubStackMergeDetails,
+)
 from jj_stack.formatting import format_pr_number
 from jj_stack.identifiers import short_commit_id
-from jj_stack.models.github import GithubPR, GithubStackMerge, GithubStackMergeDetails
 
 from .plan import MergeChange, MergeExecutionInputs
 
@@ -54,7 +63,7 @@ async def wait_for_merge(
             hint=t"Rerun {execution.merge_command} to keep waiting, or run "
             t"{execution.sync_command} after GitHub finishes.",
         ) from error
-    except GithubClientError as error:
+    except ForgeError as error:
         raise CliError(
             "Stopped waiting for GitHub's merge result; the request may still complete.",
             hint=execution.sync_after_github,
@@ -118,13 +127,13 @@ async def _queue_result(
         description="Waiting in GitHub's merge queue", report_changes=True
     ) as progress:
         while True:
-            observed = await github.get_prs_by_numbers(pr_numbers=numbers, merge_progress=True)
+            observed = await github.get_merge_queue_prs(pr_numbers=numbers)
             prs = tuple(
                 _matching_pr(observed.get(c.identity.pr_number), c, execution) for c in changes
             )
             progress.update("\n".join(_queue_progress(pr) for pr in prs))
             for pr in prs:
-                if pr.state == "merged" or pr.is_queued:
+                if pr.state == "merged" or pr.queued:
                     unexplained.pop(pr.number, None)
                     continue
                 unexplained[pr.number] = unexplained.get(pr.number, 0) + 1
@@ -138,7 +147,9 @@ async def _queue_result(
 
 
 def _queue_removal(
-    removed: GithubPR, prs: tuple[GithubPR, ...], execution: MergeExecutionInputs
+    removed: GithubPullRequest,
+    prs: tuple[GithubPullRequest, ...],
+    execution: MergeExecutionInputs,
 ) -> CliError:
     label = format_pr_number(removed.number, repo=execution.repo)
     reason = _removal_reason(removed)
@@ -179,7 +190,7 @@ def _queue_removal(
     return CliError(message, hint=tuple(hint))
 
 
-def _removal_reason(pr: GithubPR) -> str | None:
+def _removal_reason(pr: GithubPullRequest) -> str | None:
     """GitHub's recorded reason for dropping the PR from the queue, unless it merged."""
 
     reason = pr.queue_removal_reason
@@ -187,8 +198,8 @@ def _removal_reason(pr: GithubPR) -> str | None:
 
 
 def _matching_pr(
-    pr: GithubPR | None, change: MergeChange, execution: MergeExecutionInputs
-) -> GithubPR:
+    pr: GithubPullRequest | None, change: MergeChange, execution: MergeExecutionInputs
+) -> GithubPullRequest:
     if pr is None or pr.head.ref != change.identity.head_ref or pr.head.sha != change.commit_id:
         label = format_pr_number(change.identity.pr_number, repo=execution.repo)
         raise CliError(
@@ -199,7 +210,7 @@ def _matching_pr(
     return pr
 
 
-def _queue_progress(pr: GithubPR) -> str:
+def _queue_progress(pr: GithubPullRequest) -> str:
     entry = pr.merge_queue_entry
     if pr.state == "merged":
         return f"PR #{pr.number}: merged"

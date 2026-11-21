@@ -8,14 +8,16 @@ from dataclasses import dataclass
 import jj_stack.ui as ui
 from jj_stack.console import ActionStatus
 from jj_stack.errors import CliError
-from jj_stack.forge.github.client import PR_PAGE_SIZE, GithubClient, GithubClientError
+from jj_stack.forge.errors import ForgeError
+from jj_stack.forge.github.client import PR_PAGE_SIZE, GithubClient
+from jj_stack.forge.github.models import GithubIssueComment, GithubStack
 from jj_stack.forge.github.overview_comments import (
     STACK_OVERVIEW_COMMENT_LABEL,
     delete_stack_overview_comment,
 )
+from jj_stack.forge.models import PullRequest
 from jj_stack.formatting import format_pr_label
 from jj_stack.jj.client import JjClient, PRRefUpdate
-from jj_stack.models.github import GithubIssueComment, GithubPR, GithubStack
 from jj_stack.stack.change_state import (
     CompetingOpenPR,
     PRAmbiguous,
@@ -56,7 +58,7 @@ def blocked_pr_action(state: UntrustedPR) -> CleanupAction:
 async def close_pr_on_trunk(
     *,
     github_client: GithubClient,
-    pr: GithubPR,
+    pr: PullRequest,
     trunk_branch: str,
 ) -> Message | None:
     """Retarget one open PR to trunk, then close it, so GitHub can still reopen it later.
@@ -68,7 +70,7 @@ async def close_pr_on_trunk(
     pr_label = format_pr_label(pr.number, url=pr.html_url)
     try:
         if pr.base.ref != trunk_branch:
-            pr = await github_client.update_pr(pr_id=pr.node_id, base=trunk_branch)
+            pr = await github_client.update_pr(pr=pr, base=trunk_branch)
             if pr.state == "open" and pr.base.ref != trunk_branch:
                 return (
                     t"cannot close {pr_label} because GitHub did not retarget it to "
@@ -76,7 +78,7 @@ async def close_pr_on_trunk(
                 )
         if pr.state == "open":
             await github_client.close_pr(pr_number=pr.number)
-    except GithubClientError as error:
+    except ForgeError as error:
         return t"cannot close {pr_label}: {error.user_facing_reason()}"
     return None
 

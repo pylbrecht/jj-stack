@@ -7,10 +7,11 @@ from collections.abc import Sequence
 import jj_stack.ui as ui
 from jj_stack.bootstrap import CommandContext
 from jj_stack.errors import CliError, ConflictedStackError, UsageError
+from jj_stack.forge.github.models import GithubStackPR
+from jj_stack.forge.models import PullRequest
 from jj_stack.formatting import format_pr_label
 from jj_stack.identifiers import ChangeId, is_full_change_id, short_change_id
 from jj_stack.jj.client import JjClient, change_ids_revset
-from jj_stack.models.github import GithubPR, GithubStackPR
 from jj_stack.models.stack import LocalCommit, LocalStack
 from jj_stack.models.tracking import TrackingState
 from jj_stack.stack.observation import observe_change_copies
@@ -30,7 +31,7 @@ def select_submit_inputs(
     context: CommandContext,
     options: SubmitOptions,
     state: TrackingState,
-    base_pr: GithubPR | None = None,
+    base_pr: PullRequest | None = None,
 ) -> SubmitSelection:
     """Load local submit state before any GitHub mutation begins."""
 
@@ -48,7 +49,7 @@ def select_submit_inputs(
         state=state,
         base_pr=base_pr,
     )
-    explicit_base: ExplicitBase | GithubPR | None = base_pr
+    explicit_base: ExplicitBase | PullRequest | None = base_pr
     if options.base_revset is not None and base_pr is None:
         base = stack.base_parent
         short_base = short_change_id(base.change_id)
@@ -220,7 +221,7 @@ def _select_submit_stack(
     jj_client: JjClient,
     stack: LocalStack,
     state: TrackingState,
-    base_pr: GithubPR | None,
+    base_pr: PullRequest | None,
 ) -> LocalStack:
     """Select the ordinary path, optionally excluding one explicit submitted ancestor."""
 

@@ -47,19 +47,21 @@ from jj_stack.errors import (
     error_hint,
     error_message,
 )
-from jj_stack.forge.github.client import GithubClient, GithubClientError
+from jj_stack.forge.errors import ForgeError
+from jj_stack.forge.github.client import GithubClient
 from jj_stack.forge.github.error_messages import remote_and_github_unavailable_messages
+from jj_stack.forge.github.models import GithubIssueComment, GithubRepo, GithubStack
 from jj_stack.forge.github.overview_comments import STACK_OVERVIEW_COMMENT_MARKER
 from jj_stack.forge.github.resolution import (
     GithubTarget,
     UnresolvedGithubTarget,
     resolve_github_target,
 )
+from jj_stack.forge.models import PullRequest
 from jj_stack.formatting import format_pr_label
 from jj_stack.identifiers import ChangeId, short_change_id
 from jj_stack.jj.client import PRRefUpdate
 from jj_stack.models.git import GitRemote
-from jj_stack.models.github import GithubIssueComment, GithubPR, GithubRepo, GithubStack
 from jj_stack.models.tracking import TrackedPR, TrackingState
 from jj_stack.stack.change_state import classify, enumerate_orphaned_records
 from jj_stack.stack.pr_facts import (
@@ -107,7 +109,7 @@ class _CleanupPass:
 class PRCleanup:
     """One eligible PR, its branch deletion, and an optional close after retargeting."""
 
-    pr: GithubPR
+    pr: PullRequest
     update: PRRefUpdate | None
     close_to: str | None = None
 
@@ -206,7 +208,7 @@ async def cleanup_tracked_prs(
             github_repo=None if run.trunk is None else run.trunk.github_repo,
             prepared_cleanup=prepared_cleanup,
         )
-    except (CliError, GithubClientError) as error:
+    except (CliError, ForgeError) as error:
         if error_hint(error) is not None:
             raise
         raise CliError(error_message(error), hint=retry_hint()) from error
@@ -623,7 +625,7 @@ async def _apply_tracked_pr_cleanup(
     *,
     branch_update: PRRefUpdate | None,
     overview_comment: GithubIssueComment | None,
-    pr: GithubPR,
+    pr: PullRequest,
     candidate: TrackedPR,
     change_id: ChangeId,
 ) -> bool:

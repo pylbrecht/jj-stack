@@ -12,9 +12,9 @@ from collections.abc import Mapping
 from typing import Literal
 
 import jj_stack.ui as ui
+from jj_stack.forge.models import PullRequest
 from jj_stack.formatting import format_pr_label
 from jj_stack.identifiers import CommitId
-from jj_stack.models.github import GithubPR
 from jj_stack.models.tracking import TrackedPR
 from jj_stack.ui import Message
 
@@ -27,7 +27,7 @@ def classify_trunk_evidence(
     ancestries: Mapping[CommitId, CommitAncestry],
     candidate: TrackedPR,
     head_rewritten: bool,
-    pr: GithubPR,
+    pr: PullRequest,
 ) -> tuple[TrunkEvidenceKind | None, Message]:
     """Return the kind of evidence that the work reached trunk, or why neither check passed.
 

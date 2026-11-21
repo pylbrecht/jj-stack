@@ -14,9 +14,9 @@ import jj_stack.ui as ui
 from jj_stack.errors import CliError
 from jj_stack.forge.github.client import GithubClient
 from jj_stack.forge.github.error_messages import read_or_stop
+from jj_stack.forge.models import PullRequest
 from jj_stack.identifiers import ChangeId, CommitId
 from jj_stack.jj.client import JjClient, JjCommandError
-from jj_stack.models.github import GithubPR
 from jj_stack.models.stack import LocalCommit
 from jj_stack.models.tracking import TrackedPR
 from jj_stack.stack.change_state import ChangeObservation
@@ -31,7 +31,7 @@ class PRHead:
     local: CommitId | None
 
     @classmethod
-    def of(cls, tracked: TrackedPR, pr: GithubPR, selected: LocalCommit | None) -> PRHead:
+    def of(cls, tracked: TrackedPR, pr: PullRequest, selected: LocalCommit | None) -> PRHead:
         return cls(
             pr.head.sha,
             tracked.submitted_baseline.commit_id,
@@ -70,7 +70,7 @@ async def find_head_rewrites(
     heads = {
         item.change_id: PRHead.of(item.tracked, item.pr, item.selected)
         for item in changes
-        if item.tracked is not None and isinstance(item.pr, GithubPR)
+        if item.tracked is not None and isinstance(item.pr, PullRequest)
     }
     moved = tuple(head.head for head in heads.values() if head.moved)
     if not moved:

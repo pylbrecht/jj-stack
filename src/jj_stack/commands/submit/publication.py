@@ -9,12 +9,12 @@ import jj_stack.console as console
 import jj_stack.ui as ui
 from jj_stack.commands.github_run import GithubRun, ObservedTrunk
 from jj_stack.errors import CliError, error_message
-from jj_stack.forge.github.client import GithubClientError
+from jj_stack.forge.errors import ForgeError
+from jj_stack.forge.github.models import GithubStack
 from jj_stack.forge.github.overview_comments import STACK_OVERVIEW_COMMENT_MARKER
 from jj_stack.formatting import format_pr_label
 from jj_stack.identifiers import ChangeId, CommitId
 from jj_stack.jj.client import PRRefUpdate
-from jj_stack.models.github import GithubStack
 from jj_stack.stack.github_stack_safety import dissolve_github_stack
 
 from .auto_close import predict_prs_auto_closed_by_push, retarget_pr_bases_before_branch_push
@@ -176,7 +176,7 @@ async def publish_prepared(
                 ),
                 revision_limit=REVISION_HISTORY_VERSION_LIMIT,
             )
-        except GithubClientError as error:
+        except ForgeError as error:
             raise CliError("Could not load pull request comments", hint=retry_hint) from error
     overview_comments = comments_by_marker[STACK_OVERVIEW_COMMENT_MARKER]
     try:

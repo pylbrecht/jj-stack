@@ -15,8 +15,8 @@ from typing import Annotated
 from fastapi import Body, FastAPI, HTTPException, Request, Response
 from fastapi.responses import JSONResponse
 
-from jj_stack.models.github import GithubStack
-from jj_stack.models.github_details import GithubReviewThread
+from jj_stack.forge.github.details import GithubReviewThread
+from jj_stack.forge.github.models import GithubStack
 
 _FAKE_GITHUB_GIT_ENV = {
     "GIT_AUTHOR_EMAIL": "fake-github@example.com",

@@ -6,10 +6,11 @@ from typing import Literal
 
 import jj_stack.ui as ui
 from jj_stack.errors import CliError
-from jj_stack.forge.github.client import GithubClient, GithubClientError
+from jj_stack.forge.errors import ForgeError
+from jj_stack.forge.github.client import GithubClient
+from jj_stack.forge.github.models import GithubStack, GithubStackPR
 from jj_stack.forge.github.resolution import GithubRepoAddress
 from jj_stack.formatting import format_pr_label
-from jj_stack.models.github import GithubStack, GithubStackPR
 from jj_stack.stack.github_stack_safety import require_merged_prefix
 
 type GithubStackPRSnapshot = tuple[int, str, str]
@@ -116,12 +117,12 @@ async def apply_github_stack_plan(
             )
         if plan.creates_stack(len(pr_numbers)):
             return await github_client.create_stack(pr_numbers=pr_numbers)
-    except GithubClientError as error:
+    except ForgeError as error:
         # GitHub names the pull request in its 422; retrying cannot clear this one.
         hint = (
             "GitHub does not add a pull request with auto-merge enabled to a stack. Disable "
             "auto-merge on that pull request on GitHub first."
-            if "auto-merge" in error.github_message().casefold()
+            if "auto-merge" in error.forge_message.casefold()
             else None
         )
         raise CliError("Could not update the GitHub stack", hint=hint) from error

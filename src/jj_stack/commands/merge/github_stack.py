@@ -8,10 +8,12 @@ from typing import Literal
 import jj_stack.ui as ui
 from jj_stack.config import MergeMethod
 from jj_stack.errors import CliError
-from jj_stack.forge.github.client import GithubClient, GithubClientError
+from jj_stack.forge.errors import ForgeError
+from jj_stack.forge.github.client import GithubClient
+from jj_stack.forge.github.models import GithubStack, GithubStackMerge
 from jj_stack.forge.github.resolution import GithubRepoAddress
+from jj_stack.forge.models import PullRequest
 from jj_stack.formatting import format_pr_label, format_pr_number
-from jj_stack.models.github import GithubPR, GithubStack, GithubStackMerge
 from jj_stack.stack.github_stack_safety import selected_github_stack
 from jj_stack.ui import Message
 
@@ -124,8 +126,8 @@ async def prepare_merge_request(
     github: GithubClient,
     merge: AsyncMergePlan,
     execution: MergeExecutionInputs,
-    prs: tuple[GithubPR, ...],
-) -> tuple[AsyncMergePlan, tuple[GithubPR, ...]]:
+    prs: tuple[PullRequest, ...],
+) -> tuple[AsyncMergePlan, tuple[PullRequest, ...]]:
     """Retarget an ordinary PR before observing the checks that govern its merge."""
 
     if not merge.planned or merge.resource is not None:
@@ -134,8 +136,8 @@ async def prepare_merge_request(
         return merge, prs
     pr_label = format_pr_label(merge.target.identity.pr_number, repo=github.repo)
     try:
-        pr = await github.update_pr(pr_id=merge.target.pr_node_id, base=execution.trunk_branch)
-    except GithubClientError as error:
+        pr = await github.update_pr(pr=merge.target.pr, base=execution.trunk_branch)
+    except ForgeError as error:
         raise CliError(
             t"Could not retarget {pr_label} to {ui.bookmark(execution.trunk_branch)}",
             hint="Resolve the GitHub error above, then rerun jj-stack merge.",
@@ -161,8 +163,8 @@ async def execute_async_merge(
             method=method,
             pr_number=merge.target.identity.pr_number,
         )
-    except GithubClientError as error:
-        if error.status_code in {400, 409} and "head" in error.github_message().casefold():
+    except ForgeError as error:
+        if error.kind in {"conflict", "invalid"} and "head" in error.forge_message.casefold():
             return _blocked_result(
                 execution,
                 merge,
