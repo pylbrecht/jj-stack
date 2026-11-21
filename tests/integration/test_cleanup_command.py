@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from jj_stack.errors import CliError
-from jj_stack.github.overview_comments import STACK_OVERVIEW_COMMENT_MARKER
+from jj_stack.forge.github.overview_comments import STACK_OVERVIEW_COMMENT_MARKER
 from jj_stack.state.store import TrackingStore
 
 from ..support.integration_helpers import (

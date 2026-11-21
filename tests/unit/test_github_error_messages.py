@@ -6,13 +6,17 @@ import httpx2
 import pytest
 
 from jj_stack.errors import EXIT_GITHUB, CliError, resolve_exit_code
-from jj_stack.github.client import REPO_NOT_FOUND_REASON, GithubClient, GithubClientError
-from jj_stack.github.error_messages import (
+from jj_stack.forge.github.client import REPO_NOT_FOUND_REASON, GithubClient, GithubClientError
+from jj_stack.forge.github.error_messages import (
     observe_github_repo,
     repo_lookup_reason,
     require_github_target,
 )
-from jj_stack.github.resolution import GithubRepoAddress, GithubTarget, UnresolvedGithubTarget
+from jj_stack.forge.github.resolution import (
+    GithubRepoAddress,
+    GithubTarget,
+    UnresolvedGithubTarget,
+)
 from jj_stack.models.git import GitRemote
 from jj_stack.ui import plain_text
 

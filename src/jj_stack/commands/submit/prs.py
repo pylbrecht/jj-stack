@@ -7,8 +7,8 @@ from collections.abc import Awaitable, Callable, Sequence
 import jj_stack.ui as ui
 from jj_stack.concurrency import run_bounded_tasks
 from jj_stack.errors import CliError
+from jj_stack.forge.github.client import GithubClient, GithubClientError
 from jj_stack.formatting import format_pr_number
-from jj_stack.github.client import GithubClient, GithubClientError
 from jj_stack.models.github import GithubPR, GithubPRReview
 from jj_stack.models.tracking import (
     PRIdentity,

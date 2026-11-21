@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from jj_stack.errors import CliError
-from jj_stack.github.client import GithubClient, GithubClientError
+from jj_stack.forge.github.client import GithubClient, GithubClientError
 
 STACK_OVERVIEW_COMMENT_LABEL = "stack overview comment"
 STACK_OVERVIEW_COMMENT_MARKER = "<!-- jj-stack-overview -->"

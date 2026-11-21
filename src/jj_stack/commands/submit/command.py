@@ -38,10 +38,14 @@ from jj_stack.bootstrap import CommandContext, GlobalOptions, bootstrap_context
 from jj_stack.commands.github_run import GithubRun, ObservedTrunk
 from jj_stack.concurrency import wait_for_read_tasks
 from jj_stack.errors import CliError, UsageError
+from jj_stack.forge.github.error_messages import observe_github_repo, read_or_stop
+from jj_stack.forge.github.pr_refs import load_pr, parse_repo_pr_reference, pr_head_repo_problem
+from jj_stack.forge.github.resolution import (
+    GithubTarget,
+    require_github_repo,
+    select_submit_remote,
+)
 from jj_stack.formatting import format_pr_label
-from jj_stack.github.error_messages import observe_github_repo, read_or_stop
-from jj_stack.github.pr_refs import load_pr, parse_repo_pr_reference, pr_head_repo_problem
-from jj_stack.github.resolution import GithubTarget, require_github_repo, select_submit_remote
 from jj_stack.identifiers import ChangeId, CommitId, short_change_id
 from jj_stack.jj.client import JjClient
 from jj_stack.models.git import GitRemote

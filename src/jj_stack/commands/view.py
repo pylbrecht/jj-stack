@@ -38,13 +38,13 @@ from jj_stack.commands.view_details import (
     render_merge_details,
 )
 from jj_stack.errors import EXIT_INCOMPLETE, CliError, UnsupportedStackError, error_message
+from jj_stack.forge.github.error_messages import remote_and_github_unavailable_messages
+from jj_stack.forge.github.resolution import GithubRepoAddress
 from jj_stack.formatting import (
     format_pr_label,
     render_commit_blocks,
     render_commit_lines,
 )
-from jj_stack.github.error_messages import remote_and_github_unavailable_messages
-from jj_stack.github.resolution import GithubRepoAddress
 from jj_stack.identifiers import CommitId, is_change_id_prefix, short_change_id
 from jj_stack.jj.client import (
     JjCommandError,

@@ -1,7 +1,7 @@
 """Shared GitHub Stacks API availability diagnostics."""
 
 from jj_stack.errors import EXIT_GITHUB, CliError
-from jj_stack.github.client import GithubClientError
+from jj_stack.forge.github.client import GithubClientError
 
 GITHUB_STACKS_ROLLOUT_URL = "https://gh.io/stacksbeta"
 

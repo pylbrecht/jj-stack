@@ -7,8 +7,8 @@ import pytest
 
 from jj_stack.commands.relink import _load_exact_relink_pr
 from jj_stack.errors import CliError
-from jj_stack.github.client import GithubClient
-from jj_stack.github.resolution import GithubRepoAddress
+from jj_stack.forge.github.client import GithubClient
+from jj_stack.forge.github.resolution import GithubRepoAddress
 from jj_stack.identifiers import ChangeId
 from jj_stack.models.github import GithubBranchRef, GithubPR, GithubPRHead, PRState
 from jj_stack.stack.pr_branches import require_unique_pr_claims

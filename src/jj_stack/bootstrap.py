@@ -13,8 +13,8 @@ import jj_stack.console as console
 import jj_stack.ui as ui
 from jj_stack.config import AppConfig, load_config
 from jj_stack.errors import CliError
-from jj_stack.github.client import GithubClient, build_github_client
-from jj_stack.github.resolution import GithubRepoAddress
+from jj_stack.forge.github.client import GithubClient, build_github_client
+from jj_stack.forge.github.resolution import GithubRepoAddress
 from jj_stack.jj.cli_args import JjCliArgs
 from jj_stack.jj.client import JjClient
 from jj_stack.jj.settings import read_jj_settings

@@ -43,14 +43,14 @@ from jj_stack.commands.sync import converge_selected_stack
 from jj_stack.concurrency import wait_for_read_tasks
 from jj_stack.config import MergeMethod
 from jj_stack.errors import CliError, error_hint
-from jj_stack.formatting import pr_url
-from jj_stack.github.client import GithubClient, GithubClientError
-from jj_stack.github.error_messages import (
+from jj_stack.forge.github.client import GithubClient, GithubClientError
+from jj_stack.forge.github.error_messages import (
     observe_github_repo,
     read_or_stop,
     require_github_target,
 )
-from jj_stack.github.resolution import GithubTarget, resolve_github_target
+from jj_stack.forge.github.resolution import GithubTarget, resolve_github_target
+from jj_stack.formatting import pr_url
 from jj_stack.identifiers import ChangeId, short_change_id
 from jj_stack.models.github import GithubRepo
 from jj_stack.models.stack import LocalCommit, LocalStack

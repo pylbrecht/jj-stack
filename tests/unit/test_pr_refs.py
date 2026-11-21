@@ -3,8 +3,8 @@ from __future__ import annotations
 import pytest
 
 from jj_stack.errors import CliError
-from jj_stack.github.pr_refs import parse_repo_pr_reference
-from jj_stack.github.resolution import GithubRepoAddress
+from jj_stack.forge.github.pr_refs import parse_repo_pr_reference
+from jj_stack.forge.github.resolution import GithubRepoAddress
 
 
 def test_parse_repo_pr_reference_accepts_matching_url_on_any_host() -> None:

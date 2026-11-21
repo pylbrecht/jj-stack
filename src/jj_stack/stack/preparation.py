@@ -8,7 +8,11 @@ from dataclasses import dataclass
 import jj_stack.ui as ui
 from jj_stack.bootstrap import CommandContext
 from jj_stack.errors import UnsupportedStackError
-from jj_stack.github.resolution import GithubTarget, UnresolvedGithubTarget, resolve_github_target
+from jj_stack.forge.github.resolution import (
+    GithubTarget,
+    UnresolvedGithubTarget,
+    resolve_github_target,
+)
 from jj_stack.jj.client import JjClient
 from jj_stack.models.stack import LocalStack
 from jj_stack.models.tracking import TrackingState

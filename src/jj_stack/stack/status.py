@@ -11,11 +11,11 @@ import jj_stack.ui as ui
 from jj_stack.bootstrap import CommandContext
 from jj_stack.concurrency import wait_for_read_tasks
 from jj_stack.errors import CliError, ErrorMessage, error_message
-from jj_stack.github.client import (
+from jj_stack.forge.github.client import (
     GithubClient,
     GithubClientError,
 )
-from jj_stack.github.resolution import (
+from jj_stack.forge.github.resolution import (
     GithubRepoAddress,
     GithubTarget,
 )

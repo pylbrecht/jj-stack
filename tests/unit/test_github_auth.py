@@ -4,8 +4,8 @@ from types import SimpleNamespace
 
 import pytest
 
-import jj_stack.github.auth as github_auth_module
-from jj_stack.github.auth import github_token, github_token_from_env
+import jj_stack.forge.github.auth as github_auth_module
+from jj_stack.forge.github.auth import github_token, github_token_from_env
 
 
 def test_github_token_from_env_precedence(

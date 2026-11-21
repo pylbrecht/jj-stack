@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 from jj_stack.errors import CliError
+from jj_stack.forge.github.client import GithubClient, GithubClientError
 from jj_stack.formatting import format_pr_number
-from jj_stack.github.client import GithubClient, GithubClientError
 from jj_stack.models.github import GithubIssueComment
 
 

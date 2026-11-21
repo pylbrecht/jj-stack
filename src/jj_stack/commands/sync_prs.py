@@ -14,7 +14,7 @@ from jj_stack.commands.submit.inputs import (
 from jj_stack.commands.submit.models import PreparedSubmitChange, PRMetadataAction
 from jj_stack.commands.submit.publication import plan_pr_updates, publish_prepared
 from jj_stack.errors import CliError, ConflictedStackError
-from jj_stack.github.error_messages import read_or_stop
+from jj_stack.forge.github.error_messages import read_or_stop
 from jj_stack.identifiers import ChangeId, CommitId, short_change_id
 from jj_stack.jj.client import change_ids_revset
 from jj_stack.models.github import GithubStack

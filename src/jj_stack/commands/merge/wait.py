@@ -9,8 +9,8 @@ from math import ceil
 import jj_stack.console as console
 import jj_stack.ui as ui
 from jj_stack.errors import CliError, DriftError
+from jj_stack.forge.github.client import GithubClient, GithubClientError
 from jj_stack.formatting import format_pr_number
-from jj_stack.github.client import GithubClient, GithubClientError
 from jj_stack.identifiers import short_commit_id
 from jj_stack.models.github import GithubPR, GithubStackMerge, GithubStackMergeDetails
 

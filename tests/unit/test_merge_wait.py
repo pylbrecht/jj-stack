@@ -11,8 +11,8 @@ from jj_stack.commands.merge.plan import MergeChange, MergeExecutionInputs
 from jj_stack.commands.merge.wait import wait_for_merge
 from jj_stack.console import configured_console
 from jj_stack.errors import CliError
-from jj_stack.github.client import GithubClient, GithubClientError
-from jj_stack.github.resolution import GithubRepoAddress
+from jj_stack.forge.github.client import GithubClient, GithubClientError
+from jj_stack.forge.github.resolution import GithubRepoAddress
 from jj_stack.identifiers import ChangeId, CommitId
 from jj_stack.models.github import GithubBranchRef, GithubPR, GithubPRHead, GithubStackMerge
 from jj_stack.models.github_details import (

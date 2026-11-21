@@ -4,8 +4,8 @@ import asyncio
 from typing import cast
 
 from jj_stack.errors import CliError
-from jj_stack.github.client import GithubClient
-from jj_stack.github.resolution import GithubRepoAddress, GithubTarget
+from jj_stack.forge.github.client import GithubClient
+from jj_stack.forge.github.resolution import GithubRepoAddress, GithubTarget
 from jj_stack.models.git import GitRemote
 from jj_stack.models.github import GithubPR
 from jj_stack.models.stack import LocalCommit, LocalStack

@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 
 from jj_stack.errors import CliError
-from jj_stack.github.resolution import (
+from jj_stack.forge.github.resolution import (
     parse_github_repo,
     resolve_trunk_branch,
     select_submit_remote,

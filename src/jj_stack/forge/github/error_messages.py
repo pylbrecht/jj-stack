@@ -5,8 +5,8 @@ from __future__ import annotations
 from collections.abc import Awaitable
 
 from jj_stack.errors import CliError
-from jj_stack.github.client import REPO_NOT_FOUND_REASON, GithubClient, GithubClientError
-from jj_stack.github.resolution import (
+from jj_stack.forge.github.client import REPO_NOT_FOUND_REASON, GithubClient, GithubClientError
+from jj_stack.forge.github.resolution import (
     GithubRepoAddress,
     GithubTarget,
     UnresolvedGithubTarget,

@@ -11,8 +11,8 @@ import jj_stack.commands.view as view_module
 import jj_stack.console as console_module
 from jj_stack.bootstrap import GlobalOptions
 from jj_stack.errors import EXIT_INCOMPLETE, CliError
-from jj_stack.github.client import GithubClient
-from jj_stack.github.resolution import GithubRepoAddress, GithubTarget
+from jj_stack.forge.github.client import GithubClient
+from jj_stack.forge.github.resolution import GithubRepoAddress, GithubTarget
 from jj_stack.jj.cli_args import JjCliArgs
 from jj_stack.jj.client import JjClient
 from jj_stack.models.git import GitRemote

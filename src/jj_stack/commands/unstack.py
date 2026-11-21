@@ -20,9 +20,9 @@ import jj_stack.ui as ui
 from jj_stack.bootstrap import CommandContext, GlobalOptions, bootstrap_context
 from jj_stack.commands.cleanup.actions import UNTRUSTED_PR_STATES
 from jj_stack.errors import CliError, UsageError
-from jj_stack.github.client import GithubClient, GithubClientError
-from jj_stack.github.error_messages import require_github_target
-from jj_stack.github.resolution import resolve_github_target
+from jj_stack.forge.github.client import GithubClient, GithubClientError
+from jj_stack.forge.github.error_messages import require_github_target
+from jj_stack.forge.github.resolution import resolve_github_target
 from jj_stack.identifiers import ChangeId, short_change_id
 from jj_stack.models.github import GithubStack
 from jj_stack.models.tracking import TrackingState

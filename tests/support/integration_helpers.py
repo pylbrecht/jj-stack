@@ -13,9 +13,9 @@ from pathlib import Path
 import httpx2
 
 import jj_stack.bootstrap
-import jj_stack.github.resolution
-from jj_stack.github.client import GithubClient, GithubClientError
-from jj_stack.github.resolution import GithubRepoAddress
+import jj_stack.forge.github.resolution
+from jj_stack.forge.github.client import GithubClient, GithubClientError
+from jj_stack.forge.github.resolution import GithubRepoAddress
 from jj_stack.identifiers import CommitId, short_change_id
 from jj_stack.jj.client import JjClient, PRRefUpdate
 from jj_stack.models.stack import LocalStack
@@ -75,7 +75,7 @@ def patch_github_client_builders(
         client_type=client_type,
     )
     monkeypatch.setattr("jj_stack.bootstrap.build_github_client", build_github_client)
-    monkeypatch.setattr("jj_stack.github.resolution.parse_github_repo", parse_github_repo)
+    monkeypatch.setattr("jj_stack.forge.github.resolution.parse_github_repo", parse_github_repo)
 
 
 class OfflineGithubClient(GithubClient):
@@ -236,7 +236,7 @@ def _build_submitted_stack_template(template_root: Path, size: int) -> None:
 
         for module, attr, new in (
             (jj_stack.bootstrap, "build_github_client", build_github_client),
-            (jj_stack.github.resolution, "parse_github_repo", parse_github_repo),
+            (jj_stack.forge.github.resolution, "parse_github_repo", parse_github_repo),
         ):
             saved_attrs.append((module, attr, getattr(module, attr)))
             setattr(module, attr, new)

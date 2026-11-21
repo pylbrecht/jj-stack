@@ -6,8 +6,8 @@ import jj_stack.console as console
 import jj_stack.ui as ui
 from jj_stack.concurrency import run_bounded_tasks
 from jj_stack.errors import CliError
-from jj_stack.github.client import GithubClient
-from jj_stack.github.overview_comments import (
+from jj_stack.forge.github.client import GithubClient
+from jj_stack.forge.github.overview_comments import (
     STACK_OVERVIEW_COMMENT_LABEL,
     STACK_OVERVIEW_COMMENT_MARKER,
     delete_stack_overview_comment,

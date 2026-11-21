@@ -6,7 +6,7 @@ import subprocess
 from pathlib import Path
 
 from jj_stack.errors import EXIT_AMBIGUOUS, EXIT_FAILURE, EXIT_INCOMPLETE, EXIT_NO_STACK
-from jj_stack.github.client import GithubClient, GithubClientError
+from jj_stack.forge.github.client import GithubClient, GithubClientError
 from jj_stack.identifiers import short_change_id
 from jj_stack.jj.client import JjClient
 from jj_stack.models.github_details import GithubCheck, GithubPRMergeDetails, GithubReviewThread

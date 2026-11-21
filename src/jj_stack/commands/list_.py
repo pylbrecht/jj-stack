@@ -31,14 +31,14 @@ from jj_stack.commands._json_status import (
 )
 from jj_stack.console import color_when
 from jj_stack.errors import EXIT_INCOMPLETE, CliError, ErrorMessage, error_message
-from jj_stack.formatting import format_pr_label, pr_url
-from jj_stack.github.error_messages import remote_and_github_unavailable_messages
-from jj_stack.github.resolution import (
+from jj_stack.forge.github.error_messages import remote_and_github_unavailable_messages
+from jj_stack.forge.github.resolution import (
     GithubRepoAddress,
     GithubTarget,
     UnresolvedGithubTarget,
     resolve_github_target,
 )
+from jj_stack.formatting import format_pr_label, pr_url
 from jj_stack.identifiers import ChangeId, short_change_id
 from jj_stack.stack.change_state import (
     ChangeObservation,

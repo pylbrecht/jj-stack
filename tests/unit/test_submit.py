@@ -13,8 +13,8 @@ from jj_stack.commands.submit.overview_comments import sync_stack_overview_comme
 from jj_stack.commands.submit.revision_comments import _include_submitted_force_push
 from jj_stack.config import AppConfig
 from jj_stack.errors import CliError
-from jj_stack.github.client import GithubClient, GithubClientError
-from jj_stack.github.resolution import GithubRepoAddress
+from jj_stack.forge.github.client import GithubClient, GithubClientError
+from jj_stack.forge.github.resolution import GithubRepoAddress
 from jj_stack.identifiers import CommitId
 from jj_stack.jj.client import JjClient
 from jj_stack.models.github import (

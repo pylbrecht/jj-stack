@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import jj_stack.commands.doctor as doctor_mod
-from jj_stack.github.client import GithubClient
+from jj_stack.forge.github.client import GithubClient
 from jj_stack.jj.client import JjClient
 from jj_stack.pr_branch_namespace import current_pr_branch_namespace
 

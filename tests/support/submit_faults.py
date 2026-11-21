@@ -4,7 +4,7 @@ import pytest
 
 import jj_stack.commands.submit.command as submit_command
 from jj_stack.errors import CliError
-from jj_stack.github.client import GithubClient, GithubClientError
+from jj_stack.forge.github.client import GithubClient, GithubClientError
 
 from .fake_github import create_app
 from .integration_helpers import patch_github_client_builders

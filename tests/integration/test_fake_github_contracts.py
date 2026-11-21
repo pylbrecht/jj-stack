@@ -8,8 +8,8 @@ from pathlib import Path
 import httpx2
 import pytest
 
-from jj_stack.github.client import GithubClient, GithubClientError
-from jj_stack.github.resolution import GithubRepoAddress
+from jj_stack.forge.github.client import GithubClient, GithubClientError
+from jj_stack.forge.github.resolution import GithubRepoAddress
 
 from ..support.fake_github import create_app
 from ..support.integration_helpers import (

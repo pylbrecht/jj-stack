@@ -9,9 +9,9 @@ import httpx2
 import pytest
 
 from jj_stack.errors import CliError
-from jj_stack.github.client import GithubClient, GithubClientError
-from jj_stack.github.overview_comments import delete_stack_overview_comment
-from jj_stack.github.resolution import GithubRepoAddress
+from jj_stack.forge.github.client import GithubClient, GithubClientError
+from jj_stack.forge.github.overview_comments import delete_stack_overview_comment
+from jj_stack.forge.github.resolution import GithubRepoAddress
 from jj_stack.identifiers import CommitId
 from jj_stack.models.github import (
     DEFAULT_PR_TEMPLATE_PATHS,
@@ -266,7 +266,7 @@ def test_github_client_caps_and_announces_a_long_rate_limit_wait(
         async with _github_client(handler) as client:
             return (await client.get_repo()).full_name
 
-    with caplog.at_level(logging.WARNING, logger="jj_stack.github.client"):
+    with caplog.at_level(logging.WARNING, logger="jj_stack.forge.github.client"):
         assert asyncio.run(run_test()) == "octo-org/stacked-prs"
 
     assert slept == [60.0]

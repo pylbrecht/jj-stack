@@ -12,8 +12,8 @@ from dataclasses import dataclass
 
 import jj_stack.ui as ui
 from jj_stack.errors import CliError
-from jj_stack.github.client import GithubClient
-from jj_stack.github.error_messages import read_or_stop
+from jj_stack.forge.github.client import GithubClient
+from jj_stack.forge.github.error_messages import read_or_stop
 from jj_stack.identifiers import ChangeId, CommitId
 from jj_stack.jj.client import JjClient, JjCommandError
 from jj_stack.models.github import GithubPR
