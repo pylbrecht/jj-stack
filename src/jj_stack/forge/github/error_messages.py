@@ -7,13 +7,13 @@ from collections.abc import Awaitable
 from jj_stack.errors import CliError
 from jj_stack.forge.errors import ForgeError
 from jj_stack.forge.github.client import REPO_NOT_FOUND_REASON, GithubClient
+from jj_stack.forge.github.models import GithubRepo
 from jj_stack.forge.github.resolution import (
     GithubRepoAddress,
     GithubTarget,
     UnresolvedGithubTarget,
 )
 from jj_stack.models.git import GitRemote
-from jj_stack.models.github import GithubRepo
 from jj_stack.ui import Message, cmd, code
 
 

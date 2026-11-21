@@ -1,6 +1,9 @@
 from __future__ import annotations
 
-from jj_stack.models.github import GithubPR, GithubStack
+import pytest
+
+from jj_stack.forge.github.models import GithubPullRequest, GithubStack
+from jj_stack.forge.models import PRProgress
 
 
 def _graphql_pr_payload(
@@ -26,23 +29,28 @@ def _graphql_pr_payload(
     }
 
 
+def _progress(
+    payload: dict[str, object],
+) -> PRProgress:
+    progress = GithubPullRequest.model_validate(payload).progress
+    assert progress is not None
+    return progress
+
+
 def test_graphql_pr_statuses_normalize_known_states_and_drop_unknown() -> None:
-    approved = GithubPR.model_validate(
+    approved = GithubPullRequest.model_validate(
         _graphql_pr_payload("APPROVED", check_rollup_state="SUCCESS")
     )
-    changes = GithubPR.model_validate(
-        _graphql_pr_payload("CHANGES_REQUESTED", check_rollup_state="FAILURE")
-    )
-    errored = GithubPR.model_validate(_graphql_pr_payload(None, check_rollup_state="ERROR"))
-    pending = GithubPR.model_validate(_graphql_pr_payload(None, check_rollup_state="PENDING"))
-    expected = GithubPR.model_validate(_graphql_pr_payload(None, check_rollup_state="EXPECTED"))
-    required = GithubPR.model_validate(_graphql_pr_payload("REVIEW_REQUIRED"))
-    unknown = GithubPR.model_validate(
-        _graphql_pr_payload("FUTURE_STATE", check_rollup_state="FUTURE_STATE")
-    )
+    changes = _progress(_graphql_pr_payload("CHANGES_REQUESTED", check_rollup_state="FAILURE"))
+    errored = _progress(_graphql_pr_payload(None, check_rollup_state="ERROR"))
+    pending = _progress(_graphql_pr_payload(None, check_rollup_state="PENDING"))
+    expected = _progress(_graphql_pr_payload(None, check_rollup_state="EXPECTED"))
+    required = _progress(_graphql_pr_payload("REVIEW_REQUIRED"))
+    unknown = _progress(_graphql_pr_payload("FUTURE_STATE", check_rollup_state="FUTURE_STATE"))
 
-    assert approved.review_decision == "approved"
-    assert approved.check_rollup_status == "passed"
+    assert approved.progress is not None
+    assert approved.progress.review_decision == "approved"
+    assert approved.progress.check_rollup_status == "passed"
     assert approved.head.sha == "head-commit-id"
     assert changes.review_decision == "changes_requested"
     assert changes.check_rollup_status == "failed"
@@ -52,6 +60,34 @@ def test_graphql_pr_statuses_normalize_known_states_and_drop_unknown() -> None:
     assert required.review_decision == "review_required"
     assert unknown.review_decision is None
     assert unknown.check_rollup_status is None
+
+
+@pytest.mark.parametrize(
+    ("merge_state", "expected"),
+    (
+        ("CLEAN", (True, False, False, False)),
+        ("UNSTABLE", (True, False, False, False)),
+        ("BLOCKED", (False, False, False, True)),
+        ("BEHIND", (False, False, True, False)),
+        ("DIRTY", (False, True, False, False)),
+        ("UNKNOWN", (None, False, False, False)),
+    ),
+)
+def test_graphql_pr_merge_state_reads_as_neutral_merge_answers(
+    merge_state: str,
+    expected: tuple[bool | None, bool, bool, bool],
+) -> None:
+    payload = {**_graphql_pr_payload(None), "mergeStateStatus": merge_state}
+
+    progress = _progress(payload)
+
+    assert (
+        progress.ready,
+        progress.conflicts,
+        progress.behind_base,
+        progress.blocked,
+    ) == expected
+    assert progress.merge_status == merge_state
 
 
 def test_github_stack_splits_history_and_reports_a_merged_member_above_an_active_one() -> None:

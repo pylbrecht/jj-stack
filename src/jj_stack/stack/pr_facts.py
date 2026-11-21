@@ -13,9 +13,10 @@ from jj_stack.concurrency import wait_for_read_tasks
 from jj_stack.errors import CliError
 from jj_stack.forge.errors import ForgeError
 from jj_stack.forge.github.client import GithubClient
+from jj_stack.forge.github.models import GithubRepo, GithubStack
 from jj_stack.forge.github.stack_availability import github_stacks_unavailable_error
+from jj_stack.forge.models import PullRequest
 from jj_stack.identifiers import ChangeId, CommitId
-from jj_stack.models.github import GithubPR, GithubRepo, GithubStack
 from jj_stack.models.tracking import TrackingState
 from jj_stack.stack.change_state import UNOBSERVED, TrackedPRObservation
 from jj_stack.stack.observation import StackObservation, observe_change_copies
@@ -28,7 +29,7 @@ class RepoFacts:
 
     github_repo: GithubRepo
     # Contains an entry, possibly empty, for each branch whose dependents were observed.
-    prs_by_base: Mapping[str, tuple[GithubPR, ...]]
+    prs_by_base: Mapping[str, tuple[PullRequest, ...]]
     repo: github_resolution.GithubRepoAddress
     prs: Mapping[ChangeId, TrackedPRObservation]
 
@@ -77,7 +78,7 @@ async def observe_prs(
         remote_targets_request = asyncio.sleep(0, result={})
     numbered_task = asyncio.create_task(github_client.get_prs_by_numbers(pr_numbers=pr_numbers))
     open_heads_task = asyncio.create_task(open_heads_request)
-    by_base_task: asyncio.Task[dict[str, tuple[GithubPR, ...]]]
+    by_base_task: asyncio.Task[dict[str, tuple[PullRequest, ...]]]
     if read_branch_prs:
         by_base_task = asyncio.create_task(
             github_client.get_prs_by_base_refs(base_refs=head_refs)

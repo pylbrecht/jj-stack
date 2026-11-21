@@ -7,8 +7,8 @@ from dataclasses import dataclass
 from typing import Literal
 
 import jj_stack.ui as ui
+from jj_stack.forge.models import CheckRollupStatus, PullRequest
 from jj_stack.identifiers import ChangeId, short_change_id
-from jj_stack.models.github import CheckRollupStatus, GithubPR
 from jj_stack.stack.change_state import (
     BranchClaimed,
     BranchDisagrees,
@@ -127,8 +127,8 @@ def report_change(state: ChangeState) -> ChangeReport:
             and not divergent
         ),
         checks=(
-            state.pr.check_rollup_status
-            if isinstance(state, WithPR) and state.pr.state == "open"
+            state.pr.progress.check_rollup_status
+            if isinstance(state, WithPR) and state.pr.state == "open" and state.pr.progress
             else None
         ),
         merge_warnings=(
@@ -137,7 +137,9 @@ def report_change(state: ChangeState) -> ChangeReport:
             else ()
         ),
         ready=_ready(state.pr) if isinstance(state, WithPR) and problem is None else None,
-        approvals=state.pr.approvals if isinstance(state, WithPR) else None,
+        approvals=state.pr.progress.approvals
+        if isinstance(state, WithPR) and state.pr.progress
+        else None,
         reason=state.reason if isinstance(state, Stop) else None,
         repair=_repair(state),
     )
@@ -180,10 +182,12 @@ def stack_behind(states: Iterable[ChangeState]) -> tuple[int, str] | None:
     """
 
     for state in states:
-        if isinstance(state, WithPR) and state.pr.behind:
+        if not isinstance(state, WithPR) or (progress := state.pr.progress) is None:
+            continue
+        if progress.behind:
             if isinstance(state, Edited):
                 return None
-            return state.pr.behind, state.pr.stack_base_ref or state.pr.base.ref
+            return progress.behind, progress.landing_ref or state.pr.base.ref
     return None
 
 
@@ -195,32 +199,23 @@ READY_MARK = ui.semantic_text("✓", "signature status good")
 NOT_READY_MARK = ui.semantic_text("✗", "error heading")
 
 
-def _ready(pr: GithubPR) -> bool | None:
-    if pr.state != "open" or pr.is_draft or pr.is_queued:
+def _ready(pr: PullRequest) -> bool | None:
+    if pr.state != "open" or pr.is_draft or pr.queued or pr.progress is None:
         return None
-    if pr.merge_state_status in {"CLEAN", "HAS_HOOKS", "UNSTABLE"}:
-        return True
-    if pr.merge_state_status in {"BLOCKED", "BEHIND", "DIRTY"}:
-        return False
-    return None
+    return pr.progress.ready
 
 
-def _pr_status(pr: GithubPR) -> ReportStatus:
+def _pr_status(pr: PullRequest) -> ReportStatus:
     if pr.state == "merged":
         return "merged"
     if pr.state == "closed":
         return "closed"
-    if pr.is_queued:
+    if pr.queued:
         return "queued"
     if pr.is_draft:
         return "draft"
-    if pr.review_decision == "approved":
-        return "approved"
-    if pr.review_decision == "changes_requested":
-        return "changes_requested"
-    if pr.review_decision == "review_required":
-        return "review_required"
-    return "open"
+    decision = pr.progress.review_decision if pr.progress is not None else None
+    return decision or "open"
 
 
 _STATUS_LABELS: dict[ReportStatus, tuple[str, str, str | None]] = {
@@ -249,16 +244,17 @@ def status_label(status: ReportStatus, *, count: int = 1) -> str | ui.SemanticTe
     return label if severity is None else ui.semantic_text(label, severity, "heading")
 
 
-def _merge_warnings(pr: GithubPR) -> tuple[str, ...]:
-    """Report observed reasons; GitHub's generic BLOCKED value is not itself a reason."""
+def _merge_warnings(pr: PullRequest) -> tuple[str, ...]:
+    """Report observed reasons; a forge's generic blocked answer is not itself a reason."""
 
+    progress = pr.progress
+    if progress is None:
+        return ()
     warnings: list[str] = []
-    details = pr.merge_details
-    if pr.merge_state_status == "DIRTY" or (
-        details is not None and details.mergeable == "CONFLICTING"
-    ):
+    details = progress.merge_details
+    if progress.conflicts:
         warnings.append("merge conflicts")
-    if pr.merge_state_status == "BEHIND":
+    if progress.behind_base:
         warnings.append("behind base")
     if details is not None:
         if details.resolve_threads and details.unresolved_threads:

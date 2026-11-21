@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from typing import Literal
 
 import jj_stack.ui as ui
 from jj_stack.forge.github.resolution import GithubRepoAddress
+from jj_stack.forge.models import PullRequest
 from jj_stack.formatting import format_pr_number
 from jj_stack.identifiers import ChangeId, CommitId, short_change_id
 from jj_stack.models.stack import LocalCommit
@@ -83,7 +84,9 @@ class MergeChange:
     change_id: ChangeId
     commit_id: CommitId
     identity: PRIdentity
-    pr_node_id: str
+    # The PR as observed while planning, which binds a later mutation to that version. Its
+    # live progress changes between plans, so plans compare by the identity above.
+    pr: PullRequest = field(compare=False)
 
 
 @dataclass(frozen=True, slots=True)
@@ -233,7 +236,7 @@ def _merge_change(observation: RepoFacts, change: LocalCommit) -> MergeChange | 
         change_id=change.change_id,
         commit_id=change.commit_id,
         identity=observed.tracked.pr_identity,
-        pr_node_id=pr.node_id,
+        pr=pr,
     )
 
 

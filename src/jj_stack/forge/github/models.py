@@ -2,21 +2,18 @@
 
 from typing import Literal, get_args
 
-from pydantic import (
-    AliasPath,
-    BaseModel,
-    ConfigDict,
-    Field,
-    field_validator,
-    model_validator,
+from pydantic import AliasPath, BaseModel, Field, field_validator, model_validator
+
+from jj_stack.forge.github.details import GithubMergeQueueEntry
+from jj_stack.forge.models import (
+    CheckRollupStatus,
+    PRHead,
+    PRProgress,
+    PullRequest,
+    ReviewDecision,
 )
-
 from jj_stack.identifiers import CommitId
-from jj_stack.models.github_details import GithubMergeQueueEntry, GithubPRMergeDetails
 
-CheckRollupStatus = Literal["failed", "passed", "pending"]
-PRState = Literal["open", "closed", "merged"]
-ReviewDecision = Literal["approved", "changes_requested", "review_required"]
 DEFAULT_PR_TEMPLATE_PATHS = tuple(
     f"{directory}{name}"
     for directory in (".github/", "", "docs/")
@@ -30,6 +27,8 @@ _CHECK_ROLLUP_STATUSES: dict[str, CheckRollupStatus] = {
     "PENDING": "pending",
     "SUCCESS": "passed",
 }
+_READY_MERGE_STATES = {"CLEAN", "HAS_HOOKS", "UNSTABLE"}
+_UNREADY_MERGE_STATES = {"BLOCKED", "BEHIND", "DIRTY"}
 
 
 class GithubRepoPermissions(BaseModel):
@@ -50,24 +49,10 @@ class GithubRepo(BaseModel):
     permissions: GithubRepoPermissions | None = None
 
 
-class GithubBranchRef(BaseModel):
-    """Subset of branch-ref fields embedded in pull request payloads."""
-
-    ref: str
-
-
-class GithubPRHead(BaseModel):
-    """PR head branch and commit, with the owner label when available."""
-
-    label: str | None = None
-    ref: str
-    sha: CommitId
-
-
 class GithubStackPR(BaseModel):
     """Pull request state embedded in a GitHub stack response."""
 
-    head: GithubPRHead
+    head: PRHead
     number: int
     merged_at: str | None = None
 
@@ -131,17 +116,40 @@ class GithubStackMergeSubmission(BaseModel):
     result: GithubStackMerge
 
 
-class GithubPR(BaseModel):
+class GithubPullRequest(PullRequest):
+    """A pull request read from GitHub, with the facts only the GitHub adapter uses."""
+
+    node_id: str
+    merge_queue_entry: GithubMergeQueueEntry | None = None
+    queue_removal_reason: str | None = None
+    queue_test_commit: CommitId | None = None
+    # The branch the PR's GitHub stack lands on, when the PR is in one.
+    stack_base_ref: str | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def _from_graphql(cls, value: object) -> object:
+        # A model built by field name has no GraphQL `baseRefName`.
+        if not isinstance(value, dict) or "baseRefName" not in value:
+            return value
+        return _GraphqlPullRequest.model_validate(value).fields()
+
+
+class _GraphqlHeadOwner(BaseModel):
+    login: str
+
+
+class _GraphqlPullRequest(BaseModel):
     """Pull request fields read from GitHub's GraphQL API."""
 
-    model_config = ConfigDict(populate_by_name=True)
-
-    base: GithubBranchRef
+    base_ref: str = Field(alias="baseRefName")
     body: str | None = None
     check_rollup_status: CheckRollupStatus | None = Field(
         default=None, validation_alias=AliasPath("statusCheckRollup", "state")
     )
-    head: GithubPRHead
+    head_ref: str = Field(alias="headRefName")
+    head_sha: CommitId = Field(alias="headRefOid")
+    head_owner: _GraphqlHeadOwner | None = Field(default=None, alias="headRepositoryOwner")
     # GitHub reports a null `headRef` once the head branch is deleted.
     head_branch_exists: bool = Field(default=True, validation_alias="headRef")
     html_url: str = Field(validation_alias="url")
@@ -160,40 +168,54 @@ class GithubPR(BaseModel):
         default=None, validation_alias=AliasPath("mergeCommit", "oid")
     )
     merge_state_status: str | None = Field(default=None, validation_alias="mergeStateStatus")
-    merge_details: GithubPRMergeDetails | None = None
-    # Approvals from reviewers with write access, when looked up.
-    approvals: int | None = None
-    # How many commits the landing branch has that this PR's head lacks, when looked up.
-    behind: int | None = None
     node_id: str = Field(validation_alias="id")
     number: int
     review_decision: ReviewDecision | None = Field(
         default=None, validation_alias="reviewDecision"
     )
-    # The branch the PR's GitHub stack lands on, when the PR is in one.
     stack_base_ref: str | None = Field(
         default=None, validation_alias=AliasPath("stack", "baseRefName")
     )
-    state: PRState
+    state: str
     title: str
 
-    @property
-    def is_queued(self) -> bool:
-        return self.merge_queue_entry is not None
-
-    @model_validator(mode="before")
-    @classmethod
-    def _nest_graphql_refs(cls, value: object) -> object:
-        # GraphQL reports the branch names and head commit as top-level fields; a model built
-        # by field name already has them nested.
-        if not isinstance(value, dict) or "baseRefName" not in value:
-            return value
-        head = _GraphqlHead.model_validate(value)
-        label = None if head.owner is None else f"{head.owner.login}:{head.ref}"
+    def fields(self) -> dict[str, object]:
+        status = self.merge_state_status
+        ready = (
+            True
+            if status in _READY_MERGE_STATES
+            else False
+            if status in _UNREADY_MERGE_STATES
+            else None
+        )
+        label = None if self.head_owner is None else f"{self.head_owner.login}:{self.head_ref}"
         return {
-            **value,
-            "base": {"ref": value["baseRefName"]},
-            "head": {"label": label, "ref": head.ref, "sha": head.sha},
+            "base": {"ref": self.base_ref},
+            "body": self.body,
+            "head": {"label": label, "ref": self.head_ref, "sha": self.head_sha},
+            "head_branch_exists": self.head_branch_exists,
+            "html_url": self.html_url,
+            "is_draft": self.is_draft,
+            "merge_commit_sha": self.merge_commit_sha,
+            "merge_queue_entry": self.merge_queue_entry,
+            "node_id": self.node_id,
+            "number": self.number,
+            "progress": PRProgress(
+                check_rollup_status=self.check_rollup_status,
+                review_decision=self.review_decision,
+                ready=ready,
+                conflicts=status == "DIRTY",
+                behind_base=status == "BEHIND",
+                blocked=status == "BLOCKED",
+                merge_status=status,
+                landing_ref=self.stack_base_ref or self.base_ref,
+            ),
+            "queue_removal_reason": self.queue_removal_reason,
+            "queue_test_commit": self.queue_test_commit,
+            "queued": self.merge_queue_entry is not None,
+            "stack_base_ref": self.stack_base_ref,
+            "state": self.state.lower(),
+            "title": self.title,
         }
 
     @field_validator("check_rollup_status", mode="before")
@@ -217,21 +239,6 @@ class GithubPR(BaseModel):
             return value
         decision = value.lower()
         return decision if decision in get_args(ReviewDecision) else None
-
-    @field_validator("state", mode="before")
-    @classmethod
-    def _lowercase_state(cls, value: object) -> object:
-        return value.lower() if isinstance(value, str) else value
-
-
-class _GraphqlHeadOwner(BaseModel):
-    login: str
-
-
-class _GraphqlHead(BaseModel):
-    ref: str = Field(alias="headRefName")
-    sha: CommitId = Field(alias="headRefOid")
-    owner: _GraphqlHeadOwner | None = Field(default=None, alias="headRepositoryOwner")
 
 
 class GithubPRReviewUser(BaseModel):

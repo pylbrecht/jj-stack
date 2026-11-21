@@ -7,9 +7,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal, NamedTuple
 
+from jj_stack.forge.models import PullRequest
 from jj_stack.identifiers import ChangeId, CommitId
 from jj_stack.jj.client import JjClient
-from jj_stack.models.github import GithubPR
 from jj_stack.models.stack import LocalCommit, LocalStack
 from jj_stack.models.tracking import TrackedPR, TrackingState
 
@@ -45,7 +45,7 @@ class PreparedSubmitChange:
     expected_remote_target: CommitId | None
     change: LocalCommit
     # The saved pull request GitHub reports, or None when submit creates one.
-    pr: GithubPR | None
+    pr: PullRequest | None
 
     @property
     def remote_action(self) -> RemoteBranchAction:
@@ -140,7 +140,7 @@ class ExplicitBase:
 class SubmitSelection:
     """The selected local stack and its optional parent PR."""
 
-    explicit_base: ExplicitBase | GithubPR | None
+    explicit_base: ExplicitBase | PullRequest | None
     is_maximal_path: bool
     stack: LocalStack
 

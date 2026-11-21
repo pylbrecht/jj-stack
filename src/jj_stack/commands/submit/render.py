@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import jj_stack.console as console
 import jj_stack.ui as ui
+from jj_stack.forge.models import PullRequest
 from jj_stack.formatting import format_pr_label, render_commit_blocks, render_commit_lines
 from jj_stack.jj.client import JjClient
-from jj_stack.models.github import GithubPR
 from jj_stack.models.stack import LocalCommit
 
 from .github_stack import GithubStackPlan
@@ -47,7 +47,7 @@ def print_submit_preview(
 def print_submitted_changes(
     *,
     inputs: PublicationInputs,
-    changes: tuple[tuple[PRSyncPlan, GithubPR], ...],
+    changes: tuple[tuple[PRSyncPlan, PullRequest], ...],
 ) -> None:
     rows: list[tuple[LocalCommit, ui.Message]] = []
     for plan, pr in changes:

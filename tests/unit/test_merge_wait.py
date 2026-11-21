@@ -13,14 +13,11 @@ from jj_stack.console import configured_console
 from jj_stack.errors import CliError
 from jj_stack.forge.errors import ForgeError
 from jj_stack.forge.github.client import GithubClient
+from jj_stack.forge.github.details import GithubCheck, GithubMergeQueueEntry, latest_checks
+from jj_stack.forge.github.models import GithubPullRequest, GithubStackMerge
 from jj_stack.forge.github.resolution import GithubRepoAddress
+from jj_stack.forge.models import BranchRef, MergeDetails, PRHead
 from jj_stack.identifiers import ChangeId, CommitId
-from jj_stack.models.github import GithubBranchRef, GithubPR, GithubPRHead, GithubStackMerge
-from jj_stack.models.github_details import (
-    GithubCheck,
-    GithubMergeQueueEntry,
-    GithubPRMergeDetails,
-)
 from jj_stack.models.tracking import PRIdentity
 from jj_stack.ui import plain_text
 
@@ -29,44 +26,51 @@ from jj_stack.ui import plain_text
 # the wait ending on an exception.
 
 
-def _queued_pr(number: int) -> GithubPR:
-    return GithubPR(
-        base=GithubBranchRef(ref="main"),
-        head=GithubPRHead(ref=f"feature-{number}", sha=f"sha-{number}"),
+def _queued_pr(number: int) -> GithubPullRequest:
+    return GithubPullRequest(
+        base=BranchRef(ref="main"),
+        head=PRHead(ref=f"feature-{number}", sha=f"sha-{number}"),
         html_url=f"https://github.test/acme/repo/pull/{number}",
         node_id=f"PR_{number}",
         number=number,
         state="open",
         title="feature",
         merge_queue_entry=GithubMergeQueueEntry(),
+        queued=True,
     )
 
 
 def test_required_test_merge_result_overrides_head_result_without_waiting_for_optional_checks():
-    evidence = GithubPRMergeDetails(
+    evidence = MergeDetails(
         required_checks=("ci", "external"),
-        checks=(
-            GithubCheck(name="ci", state="FAILURE", isRequired=True),
-            # A configured name can also be reported by an app whose check is not required.
-            GithubCheck(name="external", state="FAILURE", isRequired=False),
+        checks=latest_checks(
+            (
+                GithubCheck(name="ci", state="FAILURE", isRequired=True),
+                # A configured name can also be reported by an app whose check is not required.
+                GithubCheck(name="external", state="FAILURE", isRequired=False),
+            )
         ),
-        merge_checks=(
-            GithubCheck(name="ci", state="NEUTRAL", isRequired=True),
-            GithubCheck(name="optional", state="IN_PROGRESS"),
+        merge_checks=latest_checks(
+            (
+                GithubCheck(name="ci", state="NEUTRAL", isRequired=True),
+                GithubCheck(name="optional", state="IN_PROGRESS"),
+            )
         ),
     )
     assert _pending_checks(_queued_pr(1), evidence) == ()
 
 
 def test_required_check_and_commit_status_with_the_same_name_must_both_pass():
-    evidence = GithubPRMergeDetails(
+    evidence = MergeDetails(
         required_checks=("ci",),
-        checks=(
-            GithubCheck(name="ci", state="SUCCESS", isRequired=True, databaseId=20),
-            GithubCheck(
-                name="ci", state="TIMED_OUT", url="https://ci.test/failed", isRequired=True
-            ),
-            GithubCheck(name="ci", state="FAILURE", isRequired=False),
+        checks=latest_checks(
+            (
+                GithubCheck(name="ci", state="SUCCESS", isRequired=True, databaseId=20),
+                GithubCheck(
+                    name="ci", state="TIMED_OUT", url="https://ci.test/failed", isRequired=True
+                ),
+                GithubCheck(name="ci", state="FAILURE", isRequired=False),
+            )
         ),
     )
     with pytest.raises(CliError, match="timed out") as caught:
@@ -95,7 +99,7 @@ def test_required_checks_use_the_latest_run_even_before_it_starts(latest: str):
     older = run(10, "CANCELLED" if latest == "SUCCESS" else "SUCCESS")
     newest = run(20, latest)
     for checks in ((older, newest), (newest, older)):
-        evidence = GithubPRMergeDetails(required_checks=("ci",), checks=checks)
+        evidence = MergeDetails(required_checks=("ci",), checks=latest_checks(checks))
         if latest in {"FAILURE", "CANCELLED"}:
             with pytest.raises(CliError, match=latest.lower()):
                 _pending_checks(_queued_pr(1), evidence)
@@ -120,18 +124,20 @@ def test_same_named_checks_from_distinct_apps_or_workflows_remain_required(other
             }
         )
 
-    evidence = GithubPRMergeDetails(
-        checks=(run(10, "FAILURE", 1, 1), run(20, "SUCCESS", *other_source))
+    evidence = MergeDetails(
+        checks=latest_checks((run(10, "FAILURE", 1, 1), run(20, "SUCCESS", *other_source)))
     )
     with pytest.raises(CliError, match="failure"):
         _pending_checks(_queued_pr(1), evidence)
 
 
-async def _wait(snapshots: Iterator[tuple[GithubPR, ...] | BaseException]):
+async def _wait(snapshots: Iterator[tuple[GithubPullRequest, ...] | BaseException]):
     class ObservedClient(GithubClient):
-        async def get_prs_by_numbers(
-            self, *, pr_numbers, merge_progress=False
-        ) -> dict[int, GithubPR | None]:
+        async def get_merge_queue_prs(
+            self,
+            *,
+            pr_numbers,
+        ) -> dict[int, GithubPullRequest | None]:
             snapshot = next(snapshots)
             if isinstance(snapshot, BaseException):
                 raise snapshot
@@ -144,7 +150,7 @@ async def _wait(snapshots: Iterator[tuple[GithubPR, ...] | BaseException]):
             change_id=ChangeId(f"change-{n}"),
             commit_id=CommitId(f"sha-{n}"),
             identity=PRIdentity(pr_number=n, head_ref=f"feature-{n}"),
-            pr_node_id="PR_1",
+            pr=_queued_pr(n),
         )
         for n in (1, 2)
     )
@@ -167,14 +173,14 @@ def test_queue_wait_gives_up_on_a_pr_that_stays_unqueued_without_a_recorded_reas
     monkeypatch.setattr("jj_stack.commands.merge.wait._QUEUE_POLL_INTERVAL_SECONDS", 0)
     monkeypatch.setattr("jj_stack.commands.merge.wait._UNEXPLAINED_POLLS", 2)
     bottom, top = _queued_pr(1), _queued_pr(2)
-    leaving = (bottom.model_copy(update={"merge_queue_entry": None}), top)
+    leaving = (bottom.model_copy(update={"merge_queue_entry": None, "queued": False}), top)
     with pytest.raises(CliError, match="has not recorded why") as caught:
         asyncio.run(_wait(iter([leaving, leaving, leaving])))
     assert "jj-stack merge target" in plain_text(caught.value.hint or "")
 
 
 def test_queue_wait_stops_if_a_submitted_head_changes():
-    moved = _queued_pr(2).model_copy(update={"head": GithubPRHead(ref="feature-2", sha="new")})
+    moved = _queued_pr(2).model_copy(update={"head": PRHead(ref="feature-2", sha="new")})
     with pytest.raises(CliError, match="changed or became unavailable"):
         asyncio.run(_wait(iter([(_queued_pr(1), moved)])))
 

@@ -42,9 +42,9 @@ from jj_stack.forge.github.resolution import (
     require_github_repo,
     select_submit_remote,
 )
+from jj_stack.forge.models import PullRequest
 from jj_stack.formatting import format_pr_label, format_pr_number
 from jj_stack.identifiers import ChangeId, CommitId, short_change_id
-from jj_stack.models.github import GithubPR
 from jj_stack.models.tracking import PRIdentity, SubmittedBaseline, TrackedPR
 from jj_stack.pr_branch_namespace import pr_branch_matches_change
 from jj_stack.stack.change_state import (
@@ -211,7 +211,7 @@ async def _load_exact_relink_pr(
     github_client: GithubClient,
     pr_number: int,
     repo: GithubRepoAddress,
-) -> tuple[GithubPR, CommitId]:
+) -> tuple[PullRequest, CommitId]:
     pr = await load_pr(github_client=github_client, pr_number=pr_number)
     pr_number_label = format_pr_number(pr.number, url=pr.html_url)
     if pr.state != "open":

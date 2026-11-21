@@ -11,15 +11,25 @@ import pytest
 from jj_stack.errors import CliError
 from jj_stack.forge.errors import ForgeError
 from jj_stack.forge.github.client import REPO_NOT_FOUND_REASON, GithubClient
+from jj_stack.forge.github.models import DEFAULT_PR_TEMPLATE_PATHS, GithubPullRequest
 from jj_stack.forge.github.overview_comments import delete_stack_overview_comment
 from jj_stack.forge.github.resolution import GithubRepoAddress
+from jj_stack.forge.models import BranchRef, PRHead
 from jj_stack.identifiers import CommitId
-from jj_stack.models.github import (
-    DEFAULT_PR_TEMPLATE_PATHS,
-    GithubBranchRef,
-    GithubPR,
-    GithubPRHead,
-)
+
+
+def _observed_pr(
+    number: int,
+) -> GithubPullRequest:
+    return GithubPullRequest(
+        base=BranchRef(ref="main"),
+        head=PRHead(ref=f"jj-stack/{number}", sha="a" * 40),
+        html_url=f"https://github.test/octo-org/stacked-prs/pull/{number}",
+        node_id=f"PR_{number}",
+        number=number,
+        state="open",
+        title=f"PR {number}",
+    )
 
 
 def _github_client(handler) -> GithubClient:
@@ -107,9 +117,9 @@ def test_pr_template_uses_githubs_default_without_selecting_a_named_template(
 
 @pytest.mark.parametrize("changed", [None, "head", "base", "merge"])
 def test_merge_details_paginate_without_mixing_pr_heads_or_bases(changed: str | None) -> None:
-    pr = GithubPR(
-        base=GithubBranchRef(ref="main"),
-        head=GithubPRHead(ref="feature", sha="a" * 40),
+    pr = GithubPullRequest(
+        base=BranchRef(ref="main"),
+        head=PRHead(ref="feature", sha="a" * 40),
         html_url="https://github.test/octo-org/stacked-prs/pull/1",
         node_id="PR_1",
         number=1,
@@ -209,11 +219,12 @@ def test_merge_details_paginate_without_mixing_pr_heads_or_bases(changed: str | 
         async with _github_client(handler) as client:
             return await client.get_pr_merge_details(prs=(pr,))
 
-    details = asyncio.run(run_test())[1]
+    progress = asyncio.run(run_test())[1]
     if changed:
-        assert details is None
+        assert progress is None
     else:
-        assert details is not None
+        assert progress is not None and progress.merge_details is not None
+        details = progress.merge_details
         assert len(details.merge_checks) == 101
         assert len(details.unresolved_threads) == 1
         thread = details.unresolved_threads[0]
@@ -226,9 +237,36 @@ def test_merge_details_paginate_without_mixing_pr_heads_or_bases(changed: str | 
             ("deploy", "PENDING", "https://check"),
         ]
         assert details.checks[-2].is_required
-        assert (details.checks[-2].run_id, details.checks[-2].app_id) == (20, 1)
-        assert details.checks[-2].workflow_id == 2
         assert not details.checks[-1].is_required
+
+
+@pytest.mark.parametrize(
+    ("mergeable", "conflicts"), (("CONFLICTING", True), ("MERGEABLE", False))
+)
+def test_merge_details_report_a_conflicting_merge_as_conflicts(
+    mergeable: str,
+    conflicts: bool,
+) -> None:
+    pr = _observed_pr(1)
+    page = {
+        "headRefOid": pr.head.sha,
+        "baseRefName": pr.base.ref,
+        "mergeable": mergeable,
+        "reviewThreads": {"nodes": [], "pageInfo": {"hasNextPage": False}},
+    }
+
+    def handler(request: httpx2.Request) -> httpx2.Response:
+        return httpx2.Response(200, json={"data": {"repository": {"pr_1": page}}})
+
+    async def run_test():
+        async with _github_client(handler) as client:
+            return await client.get_pr_merge_details(prs=(pr,))
+
+    progress = asyncio.run(run_test())[1]
+
+    assert progress is not None and progress.merge_details is not None
+    assert progress.conflicts is conflicts
+    assert progress.merge_details.mergeable == mergeable
 
 
 def test_github_client_caps_and_announces_a_long_rate_limit_wait(
@@ -381,7 +419,7 @@ def test_github_client_sends_only_supplied_pr_updates(
     async def run_test() -> None:
         async with _github_client(handler) as client:
             await client.update_pr(
-                pr_id="PR_7",
+                pr=_observed_pr(7),
                 base=base,
                 body=body,
                 title=title,
@@ -571,9 +609,8 @@ def test_github_client_batches_pr_lookup_by_number_with_graphql() -> None:
 
     async def run_test() -> tuple[str, str, str | None, bool, str | None, bool]:
         async with _github_client(handler) as client:
-            prs = await client.get_prs_by_numbers(
+            prs = await client.get_merge_queue_prs(
                 pr_numbers=(7, 9, 11, *range(100, 124)),
-                merge_progress=True,
             )
         pr_7 = prs[7]
         pr_9 = prs[9]
@@ -588,8 +625,8 @@ def test_github_client_batches_pr_lookup_by_number_with_graphql() -> None:
             pr_7.head.ref,
             pr_9.state,
             pr_7.head.label,
-            pr_7.is_queued,
-            pr_7.check_rollup_status,
+            pr_7.queued,
+            pr_7.progress.check_rollup_status if pr_7.progress else None,
             prs[11] is None,
         )
 
@@ -884,7 +921,7 @@ def test_github_client_batches_open_pr_lookup_by_head_ref_with_graphql() -> None
             pr_7.head.ref,
             pr_9.state,
             pr_7.head.label,
-            pr_7.review_decision,
+            pr_7.progress.review_decision if pr_7.progress else None,
         )
 
     assert asyncio.run(run_test()) == (

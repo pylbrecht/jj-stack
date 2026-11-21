@@ -5,9 +5,10 @@ import pytest
 from jj_stack.commands.merge.command import _resolve_merge_method
 from jj_stack.commands.merge.plan import MergeChange, merge_precondition_error
 from jj_stack.errors import CliError
+from jj_stack.forge.github.models import GithubPullRequest, GithubRepo
 from jj_stack.forge.github.resolution import GithubRepoAddress
+from jj_stack.forge.models import BranchRef, PRHead
 from jj_stack.models.git import GitRemote
-from jj_stack.models.github import GithubBranchRef, GithubPR, GithubPRHead, GithubRepo
 from jj_stack.models.tracking import PRIdentity, SubmittedBaseline, TrackedPR
 from jj_stack.stack.change_state import TrackedPRObservation
 from jj_stack.stack.pr_facts import RepoFacts
@@ -110,9 +111,9 @@ def test_merge_preconditions_name_a_closed_pull_request() -> None:
     )
     identity = PRIdentity(pr_number=1, head_ref="jj-stack/feature-abcdefgh")
     change = make_change(change_id="abcdefghijkl", commit_id="submitted", description="feature\n")
-    closed_pr = GithubPR(
-        base=GithubBranchRef(ref="main"),
-        head=GithubPRHead(ref=identity.head_ref, sha=change.commit_id),
+    closed_pr = GithubPullRequest(
+        base=BranchRef(ref="main"),
+        head=PRHead(ref=identity.head_ref, sha=change.commit_id),
         html_url="https://github.test/acme/widgets/pull/1",
         node_id="PR_1",
         number=1,
@@ -151,7 +152,7 @@ def test_merge_preconditions_name_a_closed_pull_request() -> None:
             change_id=change.change_id,
             commit_id=change.commit_id,
             identity=identity,
-            pr_node_id="PR_1",
+            pr=closed_pr,
         ),
     )
 

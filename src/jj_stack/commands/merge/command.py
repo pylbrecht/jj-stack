@@ -50,10 +50,10 @@ from jj_stack.forge.github.error_messages import (
     read_or_stop,
     require_github_target,
 )
+from jj_stack.forge.github.models import GithubRepo
 from jj_stack.forge.github.resolution import GithubTarget, resolve_github_target
 from jj_stack.formatting import pr_url
 from jj_stack.identifiers import ChangeId, short_change_id
-from jj_stack.models.github import GithubRepo
 from jj_stack.models.stack import LocalCommit, LocalStack
 from jj_stack.models.tracking import TrackingState
 from jj_stack.stack.pr_facts import observe_github_stacks, observe_prs

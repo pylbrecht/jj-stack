@@ -8,8 +8,8 @@ from dataclasses import replace
 from jj_stack.bootstrap import CommandContext
 from jj_stack.concurrency import wait_for_read_tasks
 from jj_stack.forge.github.client import GithubClient
+from jj_stack.forge.github.models import GithubStack
 from jj_stack.identifiers import ChangeId, CommitId
-from jj_stack.models.github import GithubStack
 from jj_stack.models.stack import LocalCommit
 from jj_stack.models.tracking import TrackingState
 from jj_stack.stack.change_state import TrackedPRObservation
@@ -98,7 +98,7 @@ def queued_pr_numbers(
         if (observed := observation.prs.get(change.change_id)) is not None
         and (pr := observed.pr) is not None
         and pr.state == "open"
-        and pr.is_queued
+        and pr.queued
     )
 
 

@@ -39,17 +39,18 @@ from jj_stack.commands.github_run import GithubRun, ObservedTrunk
 from jj_stack.concurrency import wait_for_read_tasks
 from jj_stack.errors import CliError, UsageError
 from jj_stack.forge.github.error_messages import observe_github_repo, read_or_stop
+from jj_stack.forge.github.models import GithubStack
 from jj_stack.forge.github.pr_refs import load_pr, parse_repo_pr_reference, pr_head_repo_problem
 from jj_stack.forge.github.resolution import (
     GithubTarget,
     require_github_repo,
     select_submit_remote,
 )
+from jj_stack.forge.models import PullRequest
 from jj_stack.formatting import format_pr_label
 from jj_stack.identifiers import ChangeId, CommitId, short_change_id
 from jj_stack.jj.client import JjClient
 from jj_stack.models.git import GitRemote
-from jj_stack.models.github import GithubPR, GithubStack
 from jj_stack.models.stack import LocalCommit
 from jj_stack.models.tracking import TrackedPR
 from jj_stack.pr_branch_namespace import current_pr_branch_namespace, pr_branch_matches_change
@@ -140,7 +141,7 @@ def _pr_metadata(*, context: CommandContext, options: SubmitOptions) -> PRMetada
 def _desired_draft_state(
     *,
     draft_mode: SubmitDraftMode,
-    pr: GithubPR | None,
+    pr: PullRequest | None,
 ) -> bool:
     """Resolve the command-wide draft flags for one pull request."""
 
@@ -421,7 +422,7 @@ async def _observe_submit(
     client = context.jj_client
     stack = selection.stack
     explicit_base = selection.explicit_base
-    if isinstance(explicit_base, GithubPR):
+    if isinstance(explicit_base, PullRequest):
         base_branch = explicit_base.head.ref
     elif explicit_base is not None:
         base_branch = explicit_base.branch
@@ -583,7 +584,7 @@ async def _observe_submit(
         stack=stack,
     )
     bottom_base_branch = trunk_branch
-    if isinstance(explicit_base, GithubPR):
+    if isinstance(explicit_base, PullRequest):
         if remote_targets.get(explicit_base.head.ref) != explicit_base.head.sha:
             raise CliError(
                 t"Parent {format_pr_label(explicit_base.number, url=explicit_base.html_url)} "

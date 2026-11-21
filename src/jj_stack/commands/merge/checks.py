@@ -10,9 +10,8 @@ import jj_stack.ui as ui
 from jj_stack.errors import CliError
 from jj_stack.forge.github.client import GithubClient
 from jj_stack.forge.github.error_messages import read_or_stop
+from jj_stack.forge.models import Check, MergeDetails, PullRequest
 from jj_stack.formatting import format_pr_number
-from jj_stack.models.github import GithubPR
-from jj_stack.models.github_details import GithubCheck, GithubPRMergeDetails
 
 from .plan import MergeChange
 
@@ -42,10 +41,10 @@ class ChecksPending:
 
 
 async def inspect_required_checks(
-    github: GithubClient, changes: tuple[MergeChange, ...], prs: tuple[GithubPR, ...]
+    github: GithubClient, changes: tuple[MergeChange, ...], prs: tuple[PullRequest, ...]
 ) -> ChecksPending | None:
     # Once queued, GitHub tests temporary merge-group commits and owns the queue decision.
-    unqueued = tuple(pr for pr in prs if not pr.is_queued)
+    unqueued = tuple(pr for pr in prs if not pr.queued)
     if not unqueued:
         return None
     details = await read_or_stop(
@@ -55,8 +54,8 @@ async def inspect_required_checks(
     )
     pending: list[str] = []
     for pr in unqueued:
-        evidence = details.get(pr.number)
-        if evidence is None:
+        progress = details.get(pr.number)
+        if progress is None or (evidence := progress.merge_details) is None:
             raise CliError(
                 t"PR {format_pr_number(pr.number, url=pr.html_url)} changed while inspecting "
                 t"required checks.",
@@ -66,7 +65,7 @@ async def inspect_required_checks(
     return ChecksPending(changes, tuple(pending)) if pending else None
 
 
-def _pending_checks(pr: GithubPR, evidence: GithubPRMergeDetails) -> tuple[str, ...]:
+def _pending_checks(pr: PullRequest, evidence: MergeDetails) -> tuple[str, ...]:
     # A test-merge result takes precedence over the head's result for the same required name.
     merge_names = {check.name for check in evidence.merge_checks}
     checks = tuple(check for check in evidence.checks if check.name not in merge_names)
@@ -79,7 +78,7 @@ def _pending_checks(pr: GithubPR, evidence: GithubPRMergeDetails) -> tuple[str, 
     return tuple(f"PR #{pr.number}: {name}" for name in (*pending, *evidence.missing_checks))
 
 
-def _failed_check(pr: GithubPR, check: GithubCheck) -> CliError:
+def _failed_check(pr: PullRequest, check: Check) -> CliError:
     url = check.url or f"{pr.html_url}/checks"
     return CliError(
         t"Required check {check.name} on PR {format_pr_number(pr.number, url=pr.html_url)}: "

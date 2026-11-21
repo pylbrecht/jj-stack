@@ -5,9 +5,9 @@ from typing import cast
 
 from jj_stack.errors import CliError
 from jj_stack.forge.github.client import GithubClient
+from jj_stack.forge.github.models import GithubPullRequest
 from jj_stack.forge.github.resolution import GithubRepoAddress, GithubTarget
 from jj_stack.models.git import GitRemote
-from jj_stack.models.github import GithubPR
 from jj_stack.models.stack import LocalCommit, LocalStack
 from jj_stack.models.tracking import SubmittedBaseline, TrackedPR, TrackingState
 from jj_stack.stack import status as status_module
@@ -68,8 +68,8 @@ def test_shared_github_failure_leaves_untracked_stack_complete(monkeypatch) -> N
 
 
 def test_pr_lookup_reports_the_saved_pr_when_another_open_pr_uses_its_branch() -> None:
-    def pr_payload(number: int, state: str) -> GithubPR:
-        return GithubPR.model_validate(
+    def pr_payload(number: int, state: str) -> GithubPullRequest:
+        return GithubPullRequest.model_validate(
             {
                 "base": {"ref": "main"},
                 "head": {
@@ -115,7 +115,7 @@ def test_pr_lookup_reports_the_saved_pr_when_another_open_pr_uses_its_branch() -
         )
     )["jj-stack/branch"]
 
-    assert isinstance(lookup.pr, GithubPR) and lookup.pr.number == 155
+    assert isinstance(lookup.pr, GithubPullRequest) and lookup.pr.number == 155
     assert isinstance(lookup.open_prs_on_branch, tuple)
     assert tuple(pr.number for pr in lookup.open_prs_on_branch) == (180,)
 

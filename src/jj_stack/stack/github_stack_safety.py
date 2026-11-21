@@ -8,9 +8,9 @@ import jj_stack.ui as ui
 from jj_stack.errors import CliError
 from jj_stack.forge.errors import ForgeError
 from jj_stack.forge.github.client import GithubClient
+from jj_stack.forge.github.models import GithubStack
 from jj_stack.forge.github.resolution import GithubRepoAddress
 from jj_stack.formatting import format_pr_number
-from jj_stack.models.github import GithubStack
 
 
 def require_merged_prefix(stack: GithubStack) -> GithubStack:

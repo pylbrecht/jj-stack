@@ -12,9 +12,10 @@ from jj_stack.commands.cleanup.command import cleanup_tracked_prs
 from jj_stack.commands.github_run import GithubRun, ObservedTrunk
 from jj_stack.commands.sync_prs import refresh_selected_prs
 from jj_stack.forge.errors import ForgeError
+from jj_stack.forge.github.models import GithubStack
+from jj_stack.forge.models import PullRequest
 from jj_stack.formatting import format_pr_label
 from jj_stack.identifiers import ChangeId, CommitId, short_change_id
-from jj_stack.models.github import GithubPR, GithubStack
 from jj_stack.models.stack import LocalCommit
 from jj_stack.models.tracking import TrackedPR
 from jj_stack.stack.convergence_models import OnTrunkChange, SelectedConvergencePlan
@@ -142,7 +143,7 @@ async def _cleanup_reconciled_prs(
     run: GithubRun,
     *,
     finish_results: tuple[PRFinishResult, ...],
-    remaining_prs: dict[ChangeId, GithubPR],
+    remaining_prs: dict[ChangeId, PullRequest],
     dependencies: dict[ChangeId, tuple[LocalCommit, ...]],
 ) -> int:
     cleanup_change_ids: list[ChangeId] = []

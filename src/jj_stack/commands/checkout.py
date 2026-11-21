@@ -40,6 +40,7 @@ from jj_stack.errors import CliError, UsageError
 from jj_stack.forge.errors import ForgeError
 from jj_stack.forge.github.client import GithubClient
 from jj_stack.forge.github.error_messages import observe_github_repo
+from jj_stack.forge.github.models import GithubStack
 from jj_stack.forge.github.pr_refs import (
     load_pr,
     managed_pr_head_problem,
@@ -51,11 +52,11 @@ from jj_stack.forge.github.resolution import (
     require_github_repo,
     select_submit_remote,
 )
+from jj_stack.forge.models import PullRequest
 from jj_stack.formatting import format_pr_label
 from jj_stack.identifiers import ChangeId, CommitId, short_change_id
 from jj_stack.jj.client import JjClient
 from jj_stack.models.git import GitRemote
-from jj_stack.models.github import GithubPR, GithubStack
 from jj_stack.models.stack import LocalCommit, LocalStack
 from jj_stack.models.tracking import PRIdentity, SubmittedBaseline, TrackedPR, TrackingState
 from jj_stack.pr_branch_namespace import current_pr_branch_namespace, pr_branch_matches_change
@@ -269,7 +270,7 @@ async def _checkout_pr_stack(
 def _divergent_copy_warnings(
     *,
     client: JjClient,
-    prs: tuple[GithubPR, ...],
+    prs: tuple[PullRequest, ...],
     changes: tuple[LocalCommit, ...],
 ) -> tuple[ui.Message, ...]:
     """Report each adopted change that is now visible at more than one commit."""
@@ -298,7 +299,7 @@ def _added_commit_warnings(
     *,
     client: JjClient,
     remote: str,
-    pr: GithubPR,
+    pr: PullRequest,
     change: LocalCommit,
     added: tuple[LocalCommit, ...],
 ) -> tuple[ui.Message, ...]:
@@ -333,8 +334,8 @@ async def _load_pr_chain(
     *,
     github_client: GithubClient,
     repo: GithubRepoAddress,
-    top: GithubPR,
-) -> tuple[GithubPR, ...]:
+    top: PullRequest,
+) -> tuple[PullRequest, ...]:
     """Follow PR base branches from the selected PR to trunk."""
 
     namespace = current_pr_branch_namespace()
@@ -377,7 +378,7 @@ async def _load_pr_chain(
 def _save_checkout_tracking(
     *,
     context: CommandContext,
-    prs: tuple[GithubPR, ...],
+    prs: tuple[PullRequest, ...],
     remote_targets: dict[str, CommitId],
     stack: LocalStack,
     state: TrackingState,
@@ -515,7 +516,7 @@ def _picker_choices(
     *,
     github_stacks: tuple[GithubStack, ...],
     local_stacks: list[LocalStack],
-    prs: dict[int, GithubPR | None],
+    prs: dict[int, PullRequest | None],
     repo: GithubRepoAddress,
     state: TrackingState,
     visible_commit_ids: set[CommitId],

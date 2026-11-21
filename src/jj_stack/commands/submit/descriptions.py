@@ -16,9 +16,10 @@ from pydantic import BaseModel, ConfigDict, ValidationError
 
 import jj_stack.ui as ui
 from jj_stack.errors import CliError, UsageError
+from jj_stack.forge.github.models import DEFAULT_PR_TEMPLATE_PATHS
+from jj_stack.forge.models import PullRequest
 from jj_stack.identifiers import ChangeId
 from jj_stack.jj.client import JjClient, JjCommandError
-from jj_stack.models.github import DEFAULT_PR_TEMPLATE_PATHS, GithubPR
 from jj_stack.models.stack import LocalCommit, description_subject
 
 from .default_pr_text import default_pr_body
@@ -100,7 +101,7 @@ def resolve_generated_descriptions(
 def preserve_external_pr_text(
     *,
     descriptions: dict[ChangeId, GeneratedDescription],
-    prs: Mapping[ChangeId, GithubPR | None],
+    prs: Mapping[ChangeId, PullRequest | None],
     submitted_descriptions: Mapping[ChangeId, frozenset[str]],
     template: str,
 ) -> dict[ChangeId, GeneratedDescription]:

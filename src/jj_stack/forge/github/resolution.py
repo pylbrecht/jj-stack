@@ -8,9 +8,9 @@ from urllib.parse import urlparse
 
 import jj_stack.ui as ui
 from jj_stack.errors import CliError, ErrorHint, ErrorMessage, error_message
+from jj_stack.forge.github.models import GithubRepo
 from jj_stack.identifiers import CommitId
 from jj_stack.models.git import GitRemote
-from jj_stack.models.github import GithubRepo
 from jj_stack.pr_branch_namespace import current_pr_branch_namespace
 
 

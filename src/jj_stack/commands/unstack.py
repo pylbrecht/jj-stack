@@ -23,9 +23,9 @@ from jj_stack.errors import CliError, UsageError
 from jj_stack.forge.errors import ForgeError
 from jj_stack.forge.github.client import GithubClient
 from jj_stack.forge.github.error_messages import require_github_target
+from jj_stack.forge.github.models import GithubStack
 from jj_stack.forge.github.resolution import resolve_github_target
 from jj_stack.identifiers import ChangeId, short_change_id
-from jj_stack.models.github import GithubStack
 from jj_stack.models.tracking import TrackingState
 from jj_stack.stack.change_state import classify, stop_error
 from jj_stack.stack.github_stack_safety import (

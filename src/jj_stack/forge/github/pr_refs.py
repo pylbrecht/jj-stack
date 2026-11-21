@@ -10,15 +10,15 @@ from jj_stack.errors import CliError, UsageError
 from jj_stack.forge.errors import ForgeError
 from jj_stack.forge.github.client import GithubClient
 from jj_stack.forge.github.resolution import GithubRepoAddress
+from jj_stack.forge.models import PullRequest
 from jj_stack.formatting import format_pr_number
 from jj_stack.identifiers import CommitId
-from jj_stack.models.github import GithubPR
 from jj_stack.pr_branch_namespace import current_pr_branch_namespace
 
 _PR_URL_RE = re.compile(r"^/(?P<owner>[^/]+)/(?P<repo>[^/]+)/pull/(?P<number>[0-9]+)/?$")
 
 
-async def load_pr(*, github_client: GithubClient, pr_number: int) -> GithubPR:
+async def load_pr(*, github_client: GithubClient, pr_number: int) -> PullRequest:
     try:
         return await github_client.get_pr(pr_number=pr_number)
     except ForgeError as error:
@@ -26,7 +26,7 @@ async def load_pr(*, github_client: GithubClient, pr_number: int) -> GithubPR:
         raise CliError(t"Could not load pull request {pr_label}") from error
 
 
-def pr_head_repo_problem(pr: GithubPR, repo: GithubRepoAddress) -> ui.Message | None:
+def pr_head_repo_problem(pr: PullRequest, repo: GithubRepoAddress) -> ui.Message | None:
     """Explain why a PR's head branch does not belong to the selected repo."""
 
     pr_number_label = format_pr_number(pr.number, url=pr.html_url)
@@ -38,7 +38,7 @@ def pr_head_repo_problem(pr: GithubPR, repo: GithubRepoAddress) -> ui.Message | 
     return None
 
 
-def managed_pr_head_problem(pr: GithubPR, repo: GithubRepoAddress) -> ui.Message | None:
+def managed_pr_head_problem(pr: PullRequest, repo: GithubRepoAddress) -> ui.Message | None:
     """Explain why a PR's head is not owned by this repo and branch namespace, if it is not."""
 
     if (problem := pr_head_repo_problem(pr, repo)) is not None:
@@ -54,7 +54,7 @@ def managed_pr_head_problem(pr: GithubPR, repo: GithubRepoAddress) -> ui.Message
     return None
 
 
-def require_managed_pr_head(*, pr: GithubPR, repo: GithubRepoAddress) -> CommitId:
+def require_managed_pr_head(*, pr: PullRequest, repo: GithubRepoAddress) -> CommitId:
     """Return the head commit of a PR owned by this repo and branch namespace."""
 
     if (problem := managed_pr_head_problem(pr, repo)) is not None:

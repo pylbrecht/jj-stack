@@ -7,6 +7,7 @@ import logging
 import re
 import time
 from collections.abc import Awaitable, Callable, Mapping, Sequence
+from dataclasses import dataclass
 from email.utils import parsedate_to_datetime
 from itertools import batched
 from math import ceil
@@ -21,20 +22,21 @@ from jj_stack.concurrency import DEFAULT_BOUNDED_CONCURRENCY, wait_for_read_task
 from jj_stack.config import MergeMethod
 from jj_stack.forge.errors import ForgeError, ForgeErrorKind
 from jj_stack.forge.github.auth import github_token
-from jj_stack.forge.github.resolution import GithubRepoAddress
-from jj_stack.identifiers import CommitId
-from jj_stack.models.github import (
+from jj_stack.forge.github.details import GithubCheck, GithubReviewThread, latest_checks
+from jj_stack.forge.github.models import (
     DEFAULT_PR_TEMPLATE_PATHS,
     GithubIssueComment,
-    GithubPR,
     GithubPRReview,
     GithubPRRevision,
+    GithubPullRequest,
     GithubRepo,
     GithubStack,
     GithubStackMerge,
     GithubStackMergeSubmission,
 )
-from jj_stack.models.github_details import GithubCheck, GithubPRMergeDetails, GithubReviewThread
+from jj_stack.forge.github.resolution import GithubRepoAddress
+from jj_stack.forge.models import MergeDetails, PRProgress, PullRequest
+from jj_stack.identifiers import CommitId
 from jj_stack.timing import timed
 
 logger = logging.getLogger(__name__)
@@ -100,7 +102,11 @@ _STATUS_ERROR_KINDS: dict[int, ForgeErrorKind] = {
 }
 
 
-def _unusable_response(detail: str, *, kind: ForgeErrorKind = "unavailable") -> ForgeError:
+def _unusable_response(
+    detail: str,
+    *,
+    kind: ForgeErrorKind = "unavailable",
+) -> ForgeError:
     """A failure with no HTTP error status, such as a transport error or an unusable body."""
 
     return ForgeError(f"request failed ({detail.strip()})", kind=kind)
@@ -141,13 +147,17 @@ def _status_error(
     return ForgeError(message, kind=kind, forge_message=forge_message)
 
 
-def _graphql_error(errors: tuple[GraphqlError, ...]) -> ForgeError:
+def _graphql_error(
+    errors: tuple[GraphqlError, ...],
+) -> ForgeError:
     if any(error.type == "NOT_FOUND" and error.path == ("repository",) for error in errors):
         return ForgeError(REPO_NOT_FOUND_REASON, kind="not_found")
     return _unusable_response("; ".join(error.message for error in errors))
 
 
-def _github_message(body: str) -> str:
+def _github_message(
+    body: str,
+) -> str:
     """Return GitHub's own explanation from the JSON body, bounded in length."""
 
     try:
@@ -166,7 +176,7 @@ def _github_message(body: str) -> str:
 
 
 class _GraphqlPRConnection(BaseModel):
-    nodes: tuple[GithubPR, ...]
+    nodes: tuple[GithubPullRequest, ...]
 
 
 class _GraphqlNode(BaseModel):
@@ -174,7 +184,7 @@ class _GraphqlNode(BaseModel):
 
 
 class _GraphqlPRMutationResult(BaseModel):
-    pull_request: GithubPR = Field(alias="pullRequest")
+    pull_request: GithubPullRequest = Field(alias="pullRequest")
 
 
 class _GraphqlPageInfo(BaseModel):
@@ -321,6 +331,39 @@ class _GraphqlPRHistory(BaseModel):
         default=None,
         alias="timelineItems",
     )
+
+
+@dataclass(slots=True)
+class _MergeEvidence:
+    """Merge evidence gathered across the pages of one PR's merge details."""
+
+    mergeable: str | None = None
+    threads: tuple[GithubReviewThread, ...] = ()
+    checks: tuple[GithubCheck, ...] = ()
+    merge_checks: tuple[GithubCheck, ...] = ()
+
+    def progress(
+        self,
+        pr: PullRequest,
+        rules: _GraphqlBranchRules,
+    ) -> PRProgress:
+        details = MergeDetails(
+            mergeable=self.mergeable,
+            required_checks=rules.required_checks,
+            resolve_threads=rules.resolve_threads,
+            unresolved_threads=tuple(
+                thread.neutral() for thread in self.threads if not thread.is_resolved
+            ),
+            checks=latest_checks(self.checks),
+            merge_checks=latest_checks(self.merge_checks),
+        )
+        progress = pr.progress or PRProgress()
+        return progress.model_copy(
+            update={
+                "conflicts": progress.conflicts or self.mergeable == "CONFLICTING",
+                "merge_details": details,
+            }
+        )
 
 
 class GithubClient:
@@ -508,7 +551,7 @@ class GithubClient:
         self,
         *,
         pr_number: int,
-    ) -> GithubPR:
+    ) -> PullRequest:
         pr = (await self.get_prs_by_numbers(pr_numbers=(pr_number,)))[pr_number]
         if pr is None:
             raise _unusable_response(
@@ -520,16 +563,34 @@ class GithubClient:
         self,
         *,
         pr_numbers: Sequence[int],
-        merge_progress: bool = False,
-    ) -> dict[int, GithubPR | None]:
-        numbers = sorted(set(pr_numbers))
-        results: dict[int, GithubPR | None] = {}
+    ) -> dict[int, PullRequest | None]:
+        return dict(await self._get_prs_by_numbers(pr_numbers, merge_progress=False))
 
-        async def query_chunk(chunk: tuple[int, ...]) -> None:
+    async def get_merge_queue_prs(
+        self,
+        *,
+        pr_numbers: Sequence[int],
+    ) -> dict[int, GithubPullRequest | None]:
+        """Read the PRs with their merge-queue entries and latest queue removal."""
+
+        return await self._get_prs_by_numbers(pr_numbers, merge_progress=True)
+
+    async def _get_prs_by_numbers(
+        self,
+        pr_numbers: Sequence[int],
+        *,
+        merge_progress: bool,
+    ) -> dict[int, GithubPullRequest | None]:
+        numbers = sorted(set(pr_numbers))
+        results: dict[int, GithubPullRequest | None] = {}
+
+        async def query_chunk(
+            chunk: tuple[int, ...],
+        ) -> None:
             query = _prs_by_number_query(chunk, merge_progress=merge_progress)
             repo = await self._graphql_repo(
                 query,
-                model=dict[str, GithubPR | None],
+                model=dict[str, GithubPullRequest | None],
                 response_name="pull request batch lookup",
                 tolerate_missing_selections=True,
             )
@@ -543,14 +604,14 @@ class GithubClient:
         self,
         *,
         head_refs: Sequence[str],
-    ) -> dict[str, tuple[GithubPR, ...]]:
+    ) -> dict[str, tuple[PullRequest, ...]]:
         return await self._get_prs_by_refs(refs=head_refs, base=False)
 
     async def get_prs_by_base_refs(
         self,
         *,
         base_refs: Sequence[str],
-    ) -> dict[str, tuple[GithubPR, ...]]:
+    ) -> dict[str, tuple[PullRequest, ...]]:
         return await self._get_prs_by_refs(refs=base_refs, base=True)
 
     async def _get_prs_by_refs(
@@ -558,11 +619,11 @@ class GithubClient:
         *,
         base: bool,
         refs: Sequence[str],
-    ) -> dict[str, tuple[GithubPR, ...]]:
+    ) -> dict[str, tuple[PullRequest, ...]]:
         refs = sorted(set(refs))
         kind = "base" if base else "head"
         response_name = f"pull request {kind} lookup"
-        results: dict[str, tuple[GithubPR, ...]] = {}
+        results: dict[str, tuple[PullRequest, ...]] = {}
 
         async def query_chunk(chunk: tuple[str, ...]) -> None:
             aliases = {f"{kind}_{index}": ref for index, ref in enumerate(chunk)}
@@ -591,7 +652,7 @@ class GithubClient:
         head: str,
         repository_id: str,
         title: str,
-    ) -> GithubPR:
+    ) -> PullRequest:
         return await self._pr_mutation(
             "createPullRequest",
             fields={
@@ -692,17 +753,22 @@ class GithubClient:
         return comments_by_marker, revisions_by_pr
 
     async def get_pr_merge_details(
-        self, *, prs: Sequence[GithubPR]
-    ) -> dict[int, GithubPRMergeDetails | None]:
-        """Batch merge evidence for the observed PR heads and bases.
+        self,
+        *,
+        prs: Sequence[PullRequest],
+    ) -> dict[int, PRProgress | None]:
+        """Each PR's progress with merge evidence for the observed PR heads and bases.
 
         GitHub applies the rules of the branch a stack lands on to every PR in it, so each PR's
-        requirements come from that branch rather than its own base.
+        requirements come from that branch rather than its own base. A PR that changed since it
+        was observed maps to None.
         """
 
-        results: dict[int, GithubPRMergeDetails | None] = {}
+        results: dict[int, _MergeEvidence | None] = {}
 
-        async def query_chunk(chunk: tuple[GithubPR, ...]) -> None:
+        async def query_chunk(
+            chunk: tuple[PullRequest, ...],
+        ) -> None:
             heads = {pr.number: pr.head.sha for pr in chunk}
             bases = {pr.number: pr.base.ref for pr in chunk}
             merge_commits: dict[int, CommitId | None] = {}
@@ -736,58 +802,55 @@ class GithubClient:
                             pending.pop(number, None)
                         continue
                     merge_commits[number] = merge_commit
-                    prior = results.get(number) or GithubPRMergeDetails()
-                    threads = _consume_merge_details_page(number, page.threads, pending_threads)
-                    checks = _consume_merge_details_page(
+                    evidence = results.get(number) or _MergeEvidence()
+                    evidence.mergeable = page.mergeable
+                    evidence.threads += _consume_merge_details_page(
+                        number, page.threads, pending_threads
+                    )
+                    evidence.checks += _consume_merge_details_page(
                         number,
                         page.checks.contexts if page.checks else None,
                         pending_checks,
                         absent_ok=True,
                     )
                     merge_rollup = page.test_merge.checks if page.test_merge else None
-                    merge_checks = _consume_merge_details_page(
+                    evidence.merge_checks += _consume_merge_details_page(
                         number,
                         merge_rollup.contexts if merge_rollup else None,
                         pending_merge_checks,
                         absent_ok=True,
                     )
-                    results[number] = GithubPRMergeDetails(
-                        mergeable=page.mergeable,
-                        unresolved_threads=prior.unresolved_threads
-                        + tuple(thread for thread in threads if not thread.is_resolved),
-                        checks=prior.checks + checks,
-                        merge_checks=prior.merge_checks + merge_checks,
-                    )
+                    results[number] = evidence
 
-        landing = {pr.number: pr.stack_base_ref or pr.base.ref for pr in prs}
+        landing = {pr.number: _landing_ref(pr) for pr in prs}
         chunks = asyncio.create_task(_query_chunks(prs, query_chunk))
         rules = asyncio.create_task(self._branch_rules(sorted(set(landing.values()))))
         await wait_for_read_tasks(chunks, rules)
         branch_rules = rules.result()
         return {
-            number: details
-            and details.model_copy(
-                update={
-                    "required_checks": branch_rules[landing[number]].required_checks,
-                    "resolve_threads": branch_rules[landing[number]].resolve_threads,
-                }
-            )
-            for number, details in results.items()
+            pr.number: None
+            if (evidence := results.get(pr.number)) is None
+            else evidence.progress(pr, branch_rules[landing[pr.number]])
+            for pr in prs
         }
 
     async def get_pr_progress(
-        self, *, prs: Sequence[GithubPR]
-    ) -> dict[int, tuple[int, int | None]]:
-        """Each PR's approvals from writers and, at the bottom of a stack, how far behind its
-        landing branch it is."""
+        self,
+        *,
+        prs: Sequence[PullRequest],
+    ) -> dict[int, PRProgress]:
+        """Each PR's progress with its approvals from writers and, at the bottom of a stack, how
+        far behind its landing branch it is."""
 
-        results: dict[int, tuple[int, int | None]] = {}
+        results: dict[int, PRProgress] = {}
 
-        async def query_chunk(chunk: tuple[GithubPR, ...]) -> None:
+        async def query_chunk(
+            chunk: tuple[PullRequest, ...],
+        ) -> None:
             variables: dict[str, str] = {}
             selections: list[str] = []
             for pr in chunk:
-                landing = pr.stack_base_ref or pr.base.ref
+                landing = _landing_ref(pr)
                 compare = ""
                 if pr.base.ref == landing:
                     variables[f"landing_{pr.number}"] = landing
@@ -815,7 +878,9 @@ class GithubClient:
             )
             for pr in chunk:
                 if (progress := repo.get(f"pr_{pr.number}")) is not None:
-                    results[pr.number] = (progress.approvals, progress.behind)
+                    results[pr.number] = (pr.progress or PRProgress()).model_copy(
+                        update={"approvals": progress.approvals, "behind": progress.behind}
+                    )
 
         await _query_chunks(prs, query_chunk)
         return results
@@ -902,25 +967,30 @@ class GithubClient:
     async def update_pr(
         self,
         *,
-        pr_id: str,
+        pr: PullRequest,
         base: str | None,
         body: str | None = None,
         title: str | None = None,
-    ) -> GithubPR:
+    ) -> PullRequest:
         fields = {"baseRefName": base, "body": body, "title": title}
         return await self._pr_mutation(
             "updatePullRequest",
             fields={
-                "pullRequestId": pr_id,
+                "pullRequestId": _observed(pr).node_id,
                 **{name: value for name, value in fields.items() if value is not None},
             },
             response_name="pull request update",
         )
 
-    async def set_pr_draft(self, *, pr_id: str, draft: bool) -> GithubPR:
+    async def set_pr_draft(
+        self,
+        *,
+        pr: PullRequest,
+        draft: bool,
+    ) -> PullRequest:
         return await self._pr_mutation(
             "convertPullRequestToDraft" if draft else "markPullRequestReadyForReview",
-            fields={"pullRequestId": pr_id},
+            fields={"pullRequestId": _observed(pr).node_id},
             response_name=(
                 "convert pull request to draft" if draft else "mark pull request ready for review"
             ),
@@ -928,7 +998,7 @@ class GithubClient:
 
     async def _pr_mutation(
         self, mutation: str, *, fields: dict[str, object], response_name: str
-    ) -> GithubPR:
+    ) -> GithubPullRequest:
         payload = await self._graphql_query(
             _pr_mutation_document(mutation),
             response_name=response_name,
@@ -1130,6 +1200,22 @@ class GithubClient:
         if envelope.data is None:
             raise _unusable_response(f"GitHub {response_name} response was missing `data`.")
         return envelope.data
+
+
+def _observed(
+    pr: PullRequest,
+) -> GithubPullRequest:
+    """Narrow a PR to the GitHub read it came from, which binds a mutation to that version."""
+
+    if not isinstance(pr, GithubPullRequest):
+        raise TypeError(f"PR #{pr.number} was not read from GitHub.")
+    return pr
+
+
+def _landing_ref(
+    pr: PullRequest,
+) -> str:
+    return _observed(pr).stack_base_ref or pr.base.ref
 
 
 def _expect_success(response: httpx2.Response) -> None:

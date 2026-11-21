@@ -19,10 +19,9 @@ from jj_stack.forge.github.resolution import (
     GithubRepoAddress,
     GithubTarget,
 )
+from jj_stack.forge.models import PRProgress, PullRequest
 from jj_stack.identifiers import ChangeId, CommitId
 from jj_stack.models.git import GitRemote
-from jj_stack.models.github import GithubPR
-from jj_stack.models.github_details import GithubPRMergeDetails
 from jj_stack.models.stack import LocalCommit
 from jj_stack.models.tracking import TrackedPR
 from jj_stack.stack.change_state import (
@@ -68,7 +67,7 @@ class StackStatusChange:
         return self.state.branch
 
     @property
-    def pr(self) -> GithubPR | None:
+    def pr(self) -> PullRequest | None:
         return live_pr(self.state)
 
 
@@ -180,14 +179,14 @@ async def lookup_pr_lookups_async(
         lookups = await discover_pr_lookups(
             github_client=github_client, observations=observations
         )
-        reviewed: dict[int, GithubPR] = {}
+        reviewed: dict[int, PullRequest] = {}
         for observation in lookups.values():
             pr = observation.pr
             report = report_change(classify(observation))
             if (
-                isinstance(pr, GithubPR)
+                isinstance(pr, PullRequest)
                 and pr.state == "open"
-                and not (pr.is_draft or pr.is_queued or report.divergent)
+                and not (pr.is_draft or pr.queued or report.divergent)
                 and report.problem is None
             ):
                 reviewed[pr.number] = pr
@@ -196,33 +195,39 @@ async def lookup_pr_lookups_async(
         blocked = {
             number: pr
             for number, pr in reviewed.items()
-            if verbose or pr.merge_state_status == "BLOCKED"
+            if verbose or (pr.progress is not None and pr.progress.blocked)
         }
-        details, progress = await _follow_up(github_client, reviewed=reviewed, blocked=blocked)
+        details, progressed = await _follow_up(github_client, reviewed=reviewed, blocked=blocked)
         for branch, observation in lookups.items():
-            if not isinstance(pr := observation.pr, GithubPR) or pr.number not in reviewed:
+            if not isinstance(pr := observation.pr, PullRequest) or pr.number not in reviewed:
                 continue
-            update: dict[str, object] = {}
-            if pr.number in progress:
-                update["approvals"], update["behind"] = progress[pr.number]
-            if (evidence := details.get(pr.number)) is not None:
-                update["merge_details"] = evidence
-            lookups[branch] = replace(observation, pr=pr.model_copy(update=update))
+            progress = progressed.get(pr.number, pr.progress)
+            if progress is not None and (detailed := details.get(pr.number)) is not None:
+                # The two reads ran together, so each contributes only what it looked up.
+                progress = progress.model_copy(
+                    update={
+                        "conflicts": detailed.conflicts,
+                        "merge_details": detailed.merge_details,
+                    }
+                )
+            lookups[branch] = replace(
+                observation, pr=pr.model_copy(update={"progress": progress})
+            )
         return lookups
 
 
 async def _follow_up(
     github_client: GithubClient,
     *,
-    reviewed: Mapping[int, GithubPR],
-    blocked: Mapping[int, GithubPR],
-) -> tuple[Mapping[int, GithubPRMergeDetails | None], Mapping[int, tuple[int, int | None]]]:
+    reviewed: Mapping[int, PullRequest],
+    blocked: Mapping[int, PullRequest],
+) -> tuple[Mapping[int, PRProgress | None], Mapping[int, PRProgress]]:
     """Merge details for blocked PRs, and approvals and trunk lag for every reviewed PR.
 
     These only explain the summary, so a failed lookup leaves them out rather than failing it.
     """
 
-    async def merge_details() -> Mapping[int, GithubPRMergeDetails | None]:
+    async def merge_details() -> Mapping[int, PRProgress | None]:
         if not blocked:
             return {}
         return await github_client.get_pr_merge_details(prs=tuple(blocked.values()))
@@ -286,7 +291,7 @@ async def discover_pr_lookups(
         for branch, observation in observations.items()
         if (tracked := observation.tracked) is not None and saved_open[branch] is None
     }
-    remembered_prs: Mapping[int, GithubPR | None | ObservationFailed] = {}
+    remembered_prs: Mapping[int, PullRequest | None | ObservationFailed] = {}
     if remembered:
         try:
             remembered_prs = await github_client.get_prs_by_numbers(

@@ -29,13 +29,13 @@ from jj_stack.forge.github.client import (
     GithubClient,
 )
 from jj_stack.forge.github.error_messages import repo_lookup_reason
+from jj_stack.forge.github.models import GithubRepo
 from jj_stack.forge.github.resolution import (
     GithubRepoAddress,
     select_submit_remote,
 )
 from jj_stack.forge.github.stack_availability import github_stacks_unavailable_error
 from jj_stack.models.git import GitRemote
-from jj_stack.models.github import GithubRepo
 from jj_stack.pr_branch_namespace import current_pr_branch_namespace
 from jj_stack.state.operation_lock import operation_lock
 from jj_stack.ui import Message

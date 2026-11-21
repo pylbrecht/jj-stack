@@ -5,9 +5,8 @@ from typing import Any
 import pytest
 
 import jj_stack.ui as ui
+from jj_stack.forge.models import BranchRef, PRHead, PRState, PullRequest
 from jj_stack.identifiers import CommitId
-from jj_stack.models.github import GithubBranchRef, GithubPR, GithubPRHead, PRState
-from jj_stack.models.github_details import GithubMergeQueueEntry
 from jj_stack.models.stack import LocalCommit
 from jj_stack.models.tracking import SubmittedBaseline, TrackedPR
 from jj_stack.stack.change_state import (
@@ -49,14 +48,13 @@ def _pr(
     state: PRState = "open",
     head_sha: str = "baseline",
     queued: bool = False,
-) -> GithubPR:
-    return GithubPR(
-        base=GithubBranchRef(ref="main"),
-        head=GithubPRHead(ref=_BRANCH, sha=head_sha),
+) -> PullRequest:
+    return PullRequest(
+        base=BranchRef(ref="main"),
+        head=PRHead(ref=_BRANCH, sha=head_sha),
         html_url=f"https://github.test/octo/repo/pull/{number}",
-        merge_queue_entry=GithubMergeQueueEntry() if queued else None,
-        node_id=f"PR_{number}",
         number=number,
+        queued=queued,
         state=state,
         title="feature",
     )

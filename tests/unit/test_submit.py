@@ -15,13 +15,10 @@ from jj_stack.config import AppConfig
 from jj_stack.errors import CliError
 from jj_stack.forge.errors import ForgeError
 from jj_stack.forge.github.client import GithubClient
+from jj_stack.forge.github.models import GithubIssueComment, GithubPRRevision
 from jj_stack.forge.github.resolution import GithubRepoAddress
 from jj_stack.identifiers import CommitId
 from jj_stack.jj.client import JjClient
-from jj_stack.models.github import (
-    GithubIssueComment,
-    GithubPRRevision,
-)
 from jj_stack.models.stack import LocalStack
 from jj_stack.stack.change_state import ChangeObservation
 from jj_stack.stack.pr_branches import ResolvedPRBranch

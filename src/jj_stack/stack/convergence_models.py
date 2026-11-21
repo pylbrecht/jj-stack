@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from jj_stack.forge.models import PullRequest
 from jj_stack.identifiers import ChangeId, CommitId
-from jj_stack.models.github import GithubPR
 from jj_stack.models.stack import LocalCommit
 from jj_stack.models.tracking import TrackedPR
 from jj_stack.stack.trunk_evidence import TrunkEvidenceKind
@@ -17,14 +17,14 @@ class OnTrunkChange:
     candidate: TrackedPR
     evidence_kind: TrunkEvidenceKind
     # The still-open PR to close, or None when GitHub already finished it or rewrote it.
-    close_pr: GithubPR | None
+    close_pr: PullRequest | None
     change: LocalCommit | None
 
 
 @dataclass(frozen=True, slots=True)
 class SelectedConvergencePlan:
     on_trunk: tuple[OnTrunkChange, ...]
-    remaining_prs: dict[ChangeId, GithubPR]
+    remaining_prs: dict[ChangeId, PullRequest]
     remaining_changes: tuple[LocalCommit, ...]
     working_copy_children: tuple[LocalCommit, ...]
     # Where the remaining changes move; None leaves them in place.
