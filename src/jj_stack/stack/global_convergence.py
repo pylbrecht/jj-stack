@@ -8,7 +8,6 @@ from dataclasses import dataclass, replace
 
 from jj_stack.bootstrap import CommandContext
 from jj_stack.concurrency import wait_for_read_tasks
-from jj_stack.forge.github.client import GithubClient
 from jj_stack.forge.github.models import GithubStack
 from jj_stack.forge.protocol import Forge
 from jj_stack.formatting import format_pr_label
@@ -67,7 +66,7 @@ class GlobalSyncFacts:
 async def observe_global_sync(
     *,
     context: CommandContext,
-    github: GithubClient,
+    github: Forge,
     remote: GitRemote,
     trunk_commit_id: CommitId,
 ) -> GlobalSyncFacts:

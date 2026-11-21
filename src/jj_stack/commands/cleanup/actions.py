@@ -9,14 +9,15 @@ import jj_stack.ui as ui
 from jj_stack.console import ActionStatus
 from jj_stack.errors import CliError
 from jj_stack.forge.errors import ForgeError
-from jj_stack.forge.github.client import PR_PAGE_SIZE, GithubClient
+from jj_stack.forge.github.client import PR_PAGE_SIZE
 from jj_stack.forge.github.models import GithubStack
 from jj_stack.forge.github.overview_comments import (
     STACK_OVERVIEW_COMMENT_LABEL,
     delete_stack_overview_comment,
 )
+from jj_stack.forge.github.stack_safety import dissolve_github_stack
 from jj_stack.forge.models import PRComment, PullRequest
-from jj_stack.forge.protocol import Forge
+from jj_stack.forge.protocol import Forge, RepoAddress, StackObjects
 from jj_stack.formatting import format_pr_label
 from jj_stack.jj.client import JjClient, PRRefUpdate
 from jj_stack.stack.change_state import (
@@ -26,7 +27,6 @@ from jj_stack.stack.change_state import (
     PRMissing,
     WithPR,
 )
-from jj_stack.stack.github_stack_safety import dissolve_github_stack
 from jj_stack.stack.pr_facts import RepoFacts
 from jj_stack.ui import Message
 
@@ -222,13 +222,14 @@ def plan_github_stack_cleanup(
 async def apply_github_stack_removal(
     *,
     dry_run: bool,
-    github_client: GithubClient,
+    repo: RepoAddress,
+    stacks: StackObjects,
     stack: GithubStack,
 ) -> CleanupAction:
     """Remove a GitHub stack before cleanup deletes any branch it groups."""
 
     if not dry_run:
-        await dissolve_github_stack(github_client=github_client, stack=stack)
+        await dissolve_github_stack(repo=repo, stacks=stacks, stack=stack)
     return CleanupAction(
         kind="GitHub stack",
         body=t"remove GitHub stack #{stack.number}",

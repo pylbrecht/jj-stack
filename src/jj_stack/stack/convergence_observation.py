@@ -7,8 +7,8 @@ from dataclasses import replace
 
 from jj_stack.bootstrap import CommandContext
 from jj_stack.concurrency import wait_for_read_tasks
-from jj_stack.forge.github.client import GithubClient
 from jj_stack.forge.github.models import GithubStack
+from jj_stack.forge.protocol import Forge
 from jj_stack.identifiers import ChangeId, CommitId
 from jj_stack.models.stack import LocalCommit
 from jj_stack.models.tracking import TrackingState
@@ -23,7 +23,7 @@ from jj_stack.stack.repo import observe_repo_paths
 async def complete_sync_observation(
     *,
     context: CommandContext,
-    github: GithubClient,
+    github: Forge,
     initial: RepoFacts,
     remote_name: str,
     selected: tuple[LocalCommit, ...],

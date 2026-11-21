@@ -41,7 +41,7 @@ from jj_stack.forge.models import (
     PullRequest,
     Repo,
 )
-from jj_stack.forge.protocol import Forge
+from jj_stack.forge.protocol import Forge, StackObjects
 from jj_stack.identifiers import CommitId
 from jj_stack.timing import timed
 
@@ -394,6 +394,16 @@ class GithubClient:
         """The GitHub repo every request targets."""
 
         return self._repo
+
+    @property
+    def stacks(self) -> StackObjects | None:
+        """GitHub stacks, which this client serves itself.
+
+        The type stays optional, as in `Forge`, so a test client can stand in for a forge without
+        GitHub stacks.
+        """
+
+        return self
 
     async def __aenter__(self) -> GithubClient:
         return self

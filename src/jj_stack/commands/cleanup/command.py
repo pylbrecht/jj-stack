@@ -47,7 +47,6 @@ from jj_stack.errors import (
     error_message,
 )
 from jj_stack.forge.errors import ForgeError
-from jj_stack.forge.github.client import GithubClient
 from jj_stack.forge.github.error_messages import remote_and_github_unavailable_messages
 from jj_stack.forge.github.models import GithubStack
 from jj_stack.forge.github.overview_comments import STACK_OVERVIEW_COMMENT_MARKER
@@ -58,6 +57,7 @@ from jj_stack.forge.github.resolution import (
 )
 from jj_stack.forge.github.run import GithubRun
 from jj_stack.forge.models import PRComment, PullRequest, Repo
+from jj_stack.forge.protocol import Forge
 from jj_stack.formatting import format_pr_label
 from jj_stack.identifiers import ChangeId, short_change_id
 from jj_stack.jj.client import PRRefUpdate
@@ -98,7 +98,7 @@ class PreparedCleanup:
 class _CleanupPass:
     """Inputs shared by every PR in one cleanup pass against GitHub."""
 
-    github_client: GithubClient
+    github_client: Forge
     github_repo: Repo | None
     prepared: PreparedCleanup
     record_action: Callable[[CleanupAction], None]
@@ -353,7 +353,7 @@ def _resolve_cleanup_change_ids(
 
 async def _run_cleanup_async(
     *,
-    github_client: GithubClient | None = None,
+    github_client: Forge | None = None,
     github_repo: Repo | None = None,
     prepared_cleanup: PreparedCleanup,
 ) -> tuple[CleanupAction, ...]:
@@ -474,14 +474,16 @@ async def _run_tracked_pr_cleanup_pass(cleanup_pass: _CleanupPass) -> None:
         pr_numbers=tuple(eligible_pr_numbers),
         stacks=stacks,
     )
-    for stack in removable_stacks:
-        cleanup_pass.record_action(
-            await apply_github_stack_removal(
-                dry_run=prepared_cleanup.dry_run,
-                github_client=github_client,
-                stack=stack,
+    if (stack_objects := github_client.stacks) is not None:
+        for stack in removable_stacks:
+            cleanup_pass.record_action(
+                await apply_github_stack_removal(
+                    dry_run=prepared_cleanup.dry_run,
+                    repo=github_client.repo,
+                    stacks=stack_objects,
+                    stack=stack,
+                )
             )
-        )
     for change_id in cleanup_order:
         candidate = candidates[change_id]
         stop_after_failure = await _cleanup_tracked_pr(
@@ -498,7 +500,7 @@ async def _run_tracked_pr_cleanup_pass(cleanup_pass: _CleanupPass) -> None:
 
 async def _observe_cleanup_secondary_facts(
     *,
-    github_client: GithubClient,
+    github_client: Forge,
     pr_numbers: list[int],
 ) -> tuple[tuple[GithubStack, ...] | CliError, dict[int, PRComment | None]]:
     """Join the two shared secondary observations with stack errors taking precedence."""

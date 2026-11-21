@@ -21,17 +21,17 @@ from jj_stack.bootstrap import CommandContext, GlobalOptions, bootstrap_context
 from jj_stack.commands.cleanup.actions import UNTRUSTED_PR_STATES
 from jj_stack.errors import CliError, UsageError
 from jj_stack.forge.errors import ForgeError
-from jj_stack.forge.github.client import GithubClient
 from jj_stack.forge.github.error_messages import require_github_target
 from jj_stack.forge.github.models import GithubStack
 from jj_stack.forge.github.resolution import resolve_github_target
-from jj_stack.identifiers import ChangeId, short_change_id
-from jj_stack.models.tracking import TrackingState
-from jj_stack.stack.change_state import classify, stop_error
-from jj_stack.stack.github_stack_safety import (
+from jj_stack.forge.github.stack_safety import (
     dissolve_github_stack,
     selected_github_stack,
 )
+from jj_stack.forge.protocol import Forge, StackObjects
+from jj_stack.identifiers import ChangeId, short_change_id
+from jj_stack.models.tracking import TrackingState
+from jj_stack.stack.change_state import classify, stop_error
 from jj_stack.stack.pr_facts import observe_github_stacks, observe_prs
 from jj_stack.stack.preparation import PreparedLocalStack, prepare_local_stack
 from jj_stack.stack.selection import (
@@ -107,10 +107,18 @@ async def _run_github_unstack(
     )
 
     async with context.open_forge(repo=github_target.repo) as github_client:
+        stacks = github_client.stacks
+        if stacks is None:
+            raise CliError(
+                "This repo's forge has no GitHub stacks to remove.",
+                hint=t"Run {ui.cmd('jj-stack unstack --local')} to forget saved pull request "
+                t"links instead.",
+            )
+
         if isinstance(target, int):
             stack_number = target
             github_stack = await _get_github_stack(
-                github_client=github_client,
+                stacks=stacks,
                 stack_number=stack_number,
             )
             if github_stack is None:
@@ -146,7 +154,11 @@ async def _run_github_unstack(
             )
 
         if github_stack is not None and not dry_run:
-            await dissolve_github_stack(github_client=github_client, stack=github_stack)
+            await dissolve_github_stack(
+                repo=github_client.repo,
+                stacks=stacks,
+                stack=github_stack,
+            )
 
     if github_stack is None:
         console.output("No GitHub stack was found for the selected pull requests.")
@@ -158,11 +170,11 @@ async def _run_github_unstack(
 
 async def _get_github_stack(
     *,
-    github_client: GithubClient,
+    stacks: StackObjects,
     stack_number: int,
 ) -> GithubStack | None:
     try:
-        return await github_client.get_stack(stack_number=stack_number)
+        return await stacks.get_stack(stack_number=stack_number)
     except ForgeError as error:
         if error.kind == "not_found":
             return None
@@ -173,7 +185,7 @@ async def _check_selected_prs(
     *,
     change_ids: tuple[ChangeId, ...],
     context: CommandContext,
-    github_client: GithubClient,
+    github_client: Forge,
     remote_name: str,
     state: TrackingState,
 ) -> None:
