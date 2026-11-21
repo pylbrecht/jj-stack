@@ -8,7 +8,7 @@ from urllib.parse import urlparse
 
 import jj_stack.ui as ui
 from jj_stack.errors import CliError, ErrorHint, ErrorMessage, error_message
-from jj_stack.forge.github.models import GithubRepo
+from jj_stack.forge.models import Repo
 from jj_stack.identifiers import CommitId
 from jj_stack.models.git import GitRemote
 from jj_stack.pr_branch_namespace import current_pr_branch_namespace
@@ -181,7 +181,7 @@ def require_github_repo(remote: GitRemote) -> GithubRepoAddress:
 def resolve_trunk_branch(
     *,
     branches_at_trunk: Sequence[str],
-    github_repo_state: GithubRepo,
+    github_repo_state: Repo,
     remote: GitRemote,
     trunk_commit_id: CommitId,
 ) -> tuple[str, dict[str, CommitId]]:

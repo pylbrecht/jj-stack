@@ -12,14 +12,12 @@ from jj_stack.bootstrap import CommandContext
 from jj_stack.concurrency import wait_for_read_tasks
 from jj_stack.errors import CliError, ErrorMessage, error_message
 from jj_stack.forge.errors import ForgeError
-from jj_stack.forge.github.client import (
-    GithubClient,
-)
 from jj_stack.forge.github.resolution import (
     GithubRepoAddress,
     GithubTarget,
 )
 from jj_stack.forge.models import PRProgress, PullRequest
+from jj_stack.forge.protocol import Forge
 from jj_stack.identifiers import ChangeId, CommitId
 from jj_stack.models.git import GitRemote
 from jj_stack.models.stack import LocalCommit
@@ -175,7 +173,7 @@ async def lookup_pr_lookups_async(
 ) -> dict[str, ChangeObservation]:
     """Look up the saved PR on each branch with a client for this repository."""
 
-    async with context.open_github_client(repo=github_repo) as github_client:
+    async with context.open_forge(repo=github_repo) as github_client:
         lookups = await discover_pr_lookups(
             github_client=github_client, observations=observations
         )
@@ -217,7 +215,7 @@ async def lookup_pr_lookups_async(
 
 
 async def _follow_up(
-    github_client: GithubClient,
+    github_client: Forge,
     *,
     reviewed: Mapping[int, PullRequest],
     blocked: Mapping[int, PullRequest],
@@ -243,7 +241,7 @@ async def _follow_up(
 
 async def discover_pr_lookups(
     *,
-    github_client: GithubClient,
+    github_client: Forge,
     observations: Mapping[str, ChangeObservation],
 ) -> dict[str, ChangeObservation]:
     """Fetch the open pull requests on each branch, then each saved PR that is not one of them.

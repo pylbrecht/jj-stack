@@ -25,16 +25,14 @@ from jj_stack.errors import CliError, error_message
 from jj_stack.forge.errors import ForgeError
 from jj_stack.forge.github import resolution
 from jj_stack.forge.github.auth import github_token, github_token_from_env
-from jj_stack.forge.github.client import (
-    GithubClient,
-)
+from jj_stack.forge.github.client import GithubClient
 from jj_stack.forge.github.error_messages import repo_lookup_reason
-from jj_stack.forge.github.models import GithubRepo
 from jj_stack.forge.github.resolution import (
     GithubRepoAddress,
     select_submit_remote,
 )
 from jj_stack.forge.github.stack_availability import github_stacks_unavailable_error
+from jj_stack.forge.models import Repo
 from jj_stack.models.git import GitRemote
 from jj_stack.pr_branch_namespace import current_pr_branch_namespace
 from jj_stack.state.operation_lock import operation_lock
@@ -288,7 +286,7 @@ async def _check_github_access(
 ) -> list[CheckResult]:
     """Run the checks that need the GitHub API, sharing one client."""
 
-    async with context.open_github_client(repo=parsed_repo, token=token) as client:
+    async with context.open_forge(repo=parsed_repo, token=token) as client:
         try:
             github_repo = await client.get_repo()
         except ForgeError as error:
@@ -306,7 +304,7 @@ async def _check_github_access(
     ]
 
 
-def _check_push_access(github_repo: GithubRepo) -> CheckResult:
+def _check_push_access(github_repo: Repo) -> CheckResult:
     """Report whether the token can push PR branches to the repo that receives the PRs.
 
     A clone of a repo the user cannot push to, such as an upstream they have only forked, cannot
@@ -351,7 +349,7 @@ async def _check_github_stacks(
     return CheckResult("GitHub stacks", "ok", "stacked pull requests available")
 
 
-def _check_trunk_branch(github_repo: GithubRepo) -> CheckResult:
+def _check_trunk_branch(github_repo: Repo) -> CheckResult:
     if github_repo.default_branch:
         return CheckResult("trunk branch", "ok", github_repo.default_branch)
     return CheckResult(

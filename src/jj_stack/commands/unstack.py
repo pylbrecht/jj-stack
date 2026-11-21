@@ -106,7 +106,7 @@ async def _run_github_unstack(
         resolve_github_target(context.jj_client.list_git_remotes())
     )
 
-    async with context.open_github_client(repo=github_target.repo) as github_client:
+    async with context.open_forge(repo=github_target.repo) as github_client:
         if isinstance(target, int):
             stack_number = target
             github_stack = await _get_github_stack(

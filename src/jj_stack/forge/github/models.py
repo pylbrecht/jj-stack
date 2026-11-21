@@ -10,6 +10,7 @@ from jj_stack.forge.models import (
     PRHead,
     PRProgress,
     PullRequest,
+    Repo,
     ReviewDecision,
 )
 from jj_stack.identifiers import CommitId
@@ -31,22 +32,10 @@ _READY_MERGE_STATES = {"CLEAN", "HAS_HOOKS", "UNSTABLE"}
 _UNREADY_MERGE_STATES = {"BLOCKED", "BEHIND", "DIRTY"}
 
 
-class GithubRepoPermissions(BaseModel):
-    """The token's permissions on the repo; GitHub reports them only to authenticated requests."""
+class GithubRepo(Repo):
+    """A repo read from GitHub, with the ID that pull request creation needs."""
 
-    push: bool
-
-
-class GithubRepo(BaseModel):
-    """Subset of repo fields used by the client."""
-
-    allow_merge_commit: bool | None = None
-    allow_rebase_merge: bool | None = None
-    allow_squash_merge: bool | None = None
-    default_branch: str | None
-    full_name: str
     node_id: str
-    permissions: GithubRepoPermissions | None = None
 
 
 class GithubStackPR(BaseModel):
@@ -239,33 +228,3 @@ class _GraphqlPullRequest(BaseModel):
             return value
         decision = value.lower()
         return decision if decision in get_args(ReviewDecision) else None
-
-
-class GithubPRReviewUser(BaseModel):
-    """Subset of review-author fields used to summarize PR reviews."""
-
-    login: str
-
-
-class GithubPRReview(BaseModel):
-    """Subset of PR review fields used by the client."""
-
-    id: int
-    state: str
-    user: GithubPRReviewUser | None = None
-
-
-class GithubIssueComment(BaseModel):
-    """Subset of issue-comment fields used by the client."""
-
-    body: str
-    id: int = Field(alias="databaseId")
-
-
-class GithubPRRevision(BaseModel):
-    """One available pull request revision observed from a force push."""
-
-    before_commit_id: CommitId
-    commit_id: CommitId
-    is_current: bool
-    version: int

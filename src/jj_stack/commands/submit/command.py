@@ -35,7 +35,6 @@ from pathlib import Path
 import jj_stack.console as console
 import jj_stack.ui as ui
 from jj_stack.bootstrap import CommandContext, GlobalOptions, bootstrap_context
-from jj_stack.commands.github_run import GithubRun, ObservedTrunk
 from jj_stack.concurrency import wait_for_read_tasks
 from jj_stack.errors import CliError, UsageError
 from jj_stack.forge.github.error_messages import observe_github_repo, read_or_stop
@@ -46,6 +45,7 @@ from jj_stack.forge.github.resolution import (
     require_github_repo,
     select_submit_remote,
 )
+from jj_stack.forge.github.run import GithubRun, ObservedTrunk
 from jj_stack.forge.models import PullRequest
 from jj_stack.formatting import format_pr_label
 from jj_stack.identifiers import ChangeId, CommitId, short_change_id
@@ -267,7 +267,7 @@ async def run_submit_async(
     target = GithubTarget(remote=remote, repo=require_github_repo(remote))
     generated_edit_path: Path | None = None
     settle_pr_text: Callable[[_SubmitObservation], _SubmitObservation] | None = None
-    async with context.open_github_client(repo=target.repo) as github_client:
+    async with context.open_forge(repo=target.repo) as github_client:
         run = GithubRun(
             context=context, dry_run=options.dry_run, github=github_client, target=target
         )

@@ -8,9 +8,9 @@ from urllib.parse import urlparse
 import jj_stack.ui as ui
 from jj_stack.errors import CliError, UsageError
 from jj_stack.forge.errors import ForgeError
-from jj_stack.forge.github.client import GithubClient
 from jj_stack.forge.github.resolution import GithubRepoAddress
 from jj_stack.forge.models import PullRequest
+from jj_stack.forge.protocol import Forge
 from jj_stack.formatting import format_pr_number
 from jj_stack.identifiers import CommitId
 from jj_stack.pr_branch_namespace import current_pr_branch_namespace
@@ -18,7 +18,7 @@ from jj_stack.pr_branch_namespace import current_pr_branch_namespace
 _PR_URL_RE = re.compile(r"^/(?P<owner>[^/]+)/(?P<repo>[^/]+)/pull/(?P<number>[0-9]+)/?$")
 
 
-async def load_pr(*, github_client: GithubClient, pr_number: int) -> PullRequest:
+async def load_pr(*, github_client: Forge, pr_number: int) -> PullRequest:
     try:
         return await github_client.get_pr(pr_number=pr_number)
     except ForgeError as error:

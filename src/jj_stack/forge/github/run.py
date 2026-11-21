@@ -6,15 +6,15 @@ from dataclasses import dataclass
 
 from jj_stack.bootstrap import CommandContext
 from jj_stack.forge.github.client import GithubClient
-from jj_stack.forge.github.models import GithubRepo
 from jj_stack.forge.github.resolution import GithubTarget
+from jj_stack.forge.models import Repo
 
 
 @dataclass(frozen=True, slots=True)
 class ObservedTrunk:
     """The GitHub repo and the base branch at trunk, observed once per run."""
 
-    github_repo: GithubRepo
+    github_repo: Repo
     branch: str
 
 

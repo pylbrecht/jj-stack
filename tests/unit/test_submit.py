@@ -15,8 +15,8 @@ from jj_stack.config import AppConfig
 from jj_stack.errors import CliError
 from jj_stack.forge.errors import ForgeError
 from jj_stack.forge.github.client import GithubClient
-from jj_stack.forge.github.models import GithubIssueComment, GithubPRRevision
 from jj_stack.forge.github.resolution import GithubRepoAddress
+from jj_stack.forge.models import PRComment, PRRevision
 from jj_stack.identifiers import CommitId
 from jj_stack.jj.client import JjClient
 from jj_stack.models.stack import LocalStack
@@ -28,9 +28,9 @@ from tests.support.contexts import fake_command_context
 
 
 def test_overview_comment_move_keeps_source_when_head_creation_fails() -> None:
-    source_comment = GithubIssueComment(
+    source_comment = PRComment(
         body="<!-- jj-stack-overview -->\nEdited",
-        databaseId=7,
+        id=7,
     )
 
     class CommentClientStub(GithubClient):
@@ -151,8 +151,8 @@ def test_submit_metadata_prefers_cli_values_over_config() -> None:
 
 
 def test_revision_history_fills_only_the_force_push_github_has_not_indexed() -> None:
-    def revision(version: int, before: str, after: str, *, current: bool) -> GithubPRRevision:
-        return GithubPRRevision(
+    def revision(version: int, before: str, after: str, *, current: bool) -> PRRevision:
+        return PRRevision(
             before_commit_id=before, commit_id=after, is_current=current, version=version
         )
 

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import jj_stack.console as console
 import jj_stack.ui as ui
-from jj_stack.commands.github_run import GithubRun, ObservedTrunk
 from jj_stack.commands.submit.descriptions import preserve_external_pr_text, read_pr_template
 from jj_stack.commands.submit.inputs import (
     preflight_publication_stack,
@@ -16,6 +15,7 @@ from jj_stack.commands.submit.publication import plan_pr_updates, publish_prepar
 from jj_stack.errors import CliError, ConflictedStackError
 from jj_stack.forge.github.error_messages import read_or_stop
 from jj_stack.forge.github.models import GithubStack
+from jj_stack.forge.github.run import GithubRun, ObservedTrunk
 from jj_stack.identifiers import ChangeId, CommitId, short_change_id
 from jj_stack.jj.client import change_ids_revset
 from jj_stack.stack.convergence_models import SelectedConvergencePlan

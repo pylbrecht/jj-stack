@@ -40,9 +40,10 @@ def install_submit_fault(
             self,
             *,
             pr,
-            base,
+            base=None,
             body=None,
             title=None,
+            draft=None,
         ):
             nonlocal failed
             pr = await super().update_pr(
@@ -50,8 +51,10 @@ def install_submit_fault(
                 base=base,
                 body=body,
                 title=title,
+                draft=draft,
             )
-            if not failed and point == "update_pr" and pr.title == target_title:
+            # The fault point is the content update, not a later draft change.
+            if not failed and point == "update_pr" and draft is None and pr.title == target_title:
                 failed = True
                 raise ForgeError("Simulated pull request update failure", kind="unavailable")
             return pr

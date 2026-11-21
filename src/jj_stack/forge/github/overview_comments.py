@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from jj_stack.errors import CliError
 from jj_stack.forge.errors import ForgeError
-from jj_stack.forge.github.client import GithubClient
+from jj_stack.forge.protocol import Forge
 
 STACK_OVERVIEW_COMMENT_LABEL = "stack overview comment"
 STACK_OVERVIEW_COMMENT_MARKER = "<!-- jj-stack-overview -->"
@@ -13,7 +13,7 @@ STACK_OVERVIEW_COMMENT_MARKER = "<!-- jj-stack-overview -->"
 async def delete_stack_overview_comment(
     *,
     comment_id: int,
-    github_client: GithubClient,
+    github_client: Forge,
 ) -> bool:
     """Delete one planned managed comment, accepting an already-absent target."""
 

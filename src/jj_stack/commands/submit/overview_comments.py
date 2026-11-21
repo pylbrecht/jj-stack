@@ -6,13 +6,13 @@ import jj_stack.console as console
 import jj_stack.ui as ui
 from jj_stack.concurrency import run_bounded_tasks
 from jj_stack.errors import CliError
-from jj_stack.forge.github.client import GithubClient
-from jj_stack.forge.github.models import GithubIssueComment
 from jj_stack.forge.github.overview_comments import (
     STACK_OVERVIEW_COMMENT_LABEL,
     STACK_OVERVIEW_COMMENT_MARKER,
     delete_stack_overview_comment,
 )
+from jj_stack.forge.models import PRComment
+from jj_stack.forge.protocol import Forge
 
 from .managed_comments import upsert_managed_comment
 from .models import GeneratedDescription
@@ -20,9 +20,9 @@ from .models import GeneratedDescription
 
 async def sync_stack_overview_comments(
     *,
-    comments_by_pr_number: dict[int, GithubIssueComment | None],
+    comments_by_pr_number: dict[int, PRComment | None],
     overview_body: str | None,
-    github_client: GithubClient,
+    github_client: Forge,
     orphaned_pr_numbers: tuple[int, ...],
     pr_numbers: tuple[int, ...],
 ) -> None:
@@ -53,10 +53,10 @@ async def sync_stack_overview_comments(
 
 def plan_stack_overview(
     *,
-    comments: tuple[GithubIssueComment | None, ...],
+    comments: tuple[PRComment | None, ...],
     generated_stack_description: GeneratedDescription | None,
     is_lone_pr: bool,
-    orphaned_comments: tuple[GithubIssueComment | None, ...],
+    orphaned_comments: tuple[PRComment | None, ...],
 ) -> str | None:
     """Choose the overview from comments ordered bottom to head, then from orphaned PRs."""
 
@@ -91,8 +91,8 @@ def plan_stack_overview(
 async def _sync_overview_comment(
     *,
     comment_body: str | None,
-    existing_comment: GithubIssueComment | None,
-    github_client: GithubClient,
+    existing_comment: PRComment | None,
+    github_client: Forge,
     pr_number: int,
 ) -> None:
     if comment_body is None:

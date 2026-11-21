@@ -25,9 +25,6 @@ from jj_stack.forge.github.auth import github_token
 from jj_stack.forge.github.details import GithubCheck, GithubReviewThread, latest_checks
 from jj_stack.forge.github.models import (
     DEFAULT_PR_TEMPLATE_PATHS,
-    GithubIssueComment,
-    GithubPRReview,
-    GithubPRRevision,
     GithubPullRequest,
     GithubRepo,
     GithubStack,
@@ -35,7 +32,16 @@ from jj_stack.forge.github.models import (
     GithubStackMergeSubmission,
 )
 from jj_stack.forge.github.resolution import GithubRepoAddress
-from jj_stack.forge.models import MergeDetails, PRProgress, PullRequest
+from jj_stack.forge.models import (
+    MergeDetails,
+    PRComment,
+    PRProgress,
+    PRReview,
+    PRRevision,
+    PullRequest,
+    Repo,
+)
+from jj_stack.forge.protocol import Forge
 from jj_stack.identifiers import CommitId
 from jj_stack.timing import timed
 
@@ -325,8 +331,13 @@ class _GraphqlTimelineItemConnection(BaseModel):
     nodes: tuple[_GraphqlForcePushEvent | None, ...] | None = None
 
 
+class _GraphqlIssueComment(BaseModel):
+    body: str
+    id: int = Field(alias="databaseId")
+
+
 class _GraphqlPRHistory(BaseModel):
-    comments: _GraphqlConnection[GithubIssueComment] | None = None
+    comments: _GraphqlConnection[_GraphqlIssueComment] | None = None
     timeline_items: _GraphqlTimelineItemConnection | None = Field(
         default=None,
         alias="timelineItems",
@@ -650,7 +661,7 @@ class GithubClient:
         body: str,
         draft: bool,
         head: str,
-        repository_id: str,
+        repo: Repo,
         title: str,
     ) -> PullRequest:
         return await self._pr_mutation(
@@ -660,7 +671,7 @@ class GithubClient:
                 "body": body,
                 "draft": draft,
                 "headRefName": head,
-                "repositoryId": repository_id,
+                "repositoryId": _observed_repo(repo).node_id,
                 "title": title,
             },
             response_name="pull request creation",
@@ -670,10 +681,10 @@ class GithubClient:
         self,
         *,
         pr_number: int,
-    ) -> tuple[GithubPRReview, ...]:
+    ) -> tuple[PRReview, ...]:
         return await self._get_paginated(
             f"{self._repo_path}/pulls/{pr_number}/reviews",
-            model=tuple[GithubPRReview, ...],
+            model=tuple[PRReview, ...],
             response_name="pull request reviews",
         )
 
@@ -682,7 +693,7 @@ class GithubClient:
         *,
         body_marker: str,
         pr_numbers: Sequence[int],
-    ) -> dict[int, GithubIssueComment | None]:
+    ) -> dict[int, PRComment | None]:
         comments_by_marker, _revisions = await self.find_issue_comments_and_revisions(
             body_markers=(body_marker,),
             pr_numbers=pr_numbers,
@@ -697,19 +708,17 @@ class GithubClient:
         pr_numbers: Sequence[int],
         revision_limit: int | None,
     ) -> tuple[
-        dict[str, dict[int, GithubIssueComment | None]],
-        dict[int, tuple[GithubPRRevision, ...]],
+        dict[str, dict[int, PRComment | None]],
+        dict[int, tuple[PRRevision, ...]],
     ]:
         """Batch managed-comment lookups with recent PR revisions."""
 
         numbers = sorted(set(pr_numbers))
         markers = tuple(dict.fromkeys(body_markers))
-        comments_by_marker: dict[str, dict[int, GithubIssueComment | None]] = {
+        comments_by_marker: dict[str, dict[int, PRComment | None]] = {
             marker: {number: None for number in numbers} for marker in markers
         }
-        revisions_by_pr: dict[int, tuple[GithubPRRevision, ...]] = {
-            number: () for number in numbers
-        }
+        revisions_by_pr: dict[int, tuple[PRRevision, ...]] = {number: () for number in numbers}
 
         async def query_chunk(chunk: tuple[int, ...]) -> None:
             pending_comments: dict[int, str | None] = dict.fromkeys(chunk)
@@ -968,26 +977,25 @@ class GithubClient:
         self,
         *,
         pr: PullRequest,
-        base: str | None,
+        base: str | None = None,
         body: str | None = None,
         title: str | None = None,
+        draft: bool | None = None,
     ) -> PullRequest:
-        fields = {"baseRefName": base, "body": body, "title": title}
-        return await self._pr_mutation(
-            "updatePullRequest",
-            fields={
-                "pullRequestId": _observed(pr).node_id,
-                **{name: value for name, value in fields.items() if value is not None},
-            },
-            response_name="pull request update",
-        )
+        """Apply the given fields, then the draft state, each bound to the PR's observed ID."""
 
-    async def set_pr_draft(
-        self,
-        *,
-        pr: PullRequest,
-        draft: bool,
-    ) -> PullRequest:
+        fields = {"baseRefName": base, "body": body, "title": title}
+        changed = {name: value for name, value in fields.items() if value is not None}
+        if changed or draft is None:
+            pr = await self._pr_mutation(
+                "updatePullRequest",
+                fields={"pullRequestId": _observed(pr).node_id, **changed},
+                response_name="pull request update",
+            )
+
+        if draft is None:
+            return pr
+
         return await self._pr_mutation(
             "convertPullRequestToDraft" if draft else "markPullRequestReadyForReview",
             fields={"pullRequestId": _observed(pr).node_id},
@@ -1202,6 +1210,10 @@ class GithubClient:
         return envelope.data
 
 
+# The type checker confirms here that the GitHub adapter offers every forge request.
+_GITHUB_FORGE: type[Forge] = GithubClient
+
+
 def _observed(
     pr: PullRequest,
 ) -> GithubPullRequest:
@@ -1210,6 +1222,16 @@ def _observed(
     if not isinstance(pr, GithubPullRequest):
         raise TypeError(f"PR #{pr.number} was not read from GitHub.")
     return pr
+
+
+def _observed_repo(
+    repo: Repo,
+) -> GithubRepo:
+    """Narrow a repo to the GitHub read it came from, which holds its GraphQL ID."""
+
+    if not isinstance(repo, GithubRepo):
+        raise TypeError(f"Repo {repo.full_name} was not read from GitHub.")
+    return repo
 
 
 def _landing_ref(
@@ -1889,23 +1911,27 @@ def build_github_client(*, repo: GithubRepoAddress, token: str | None) -> Github
 
 def _issue_comments_from_graphql(
     history: _GraphqlPRHistory | None,
-) -> tuple[tuple[GithubIssueComment, ...], str | None]:
+) -> tuple[tuple[PRComment, ...], str | None]:
     comments = history.comments if history is not None else None
     if comments is None:
         return (), None
-    valid_comments = tuple(comment for comment in comments.nodes if comment is not None)
+    valid_comments = tuple(
+        PRComment(body=comment.body, id=comment.id)
+        for comment in comments.nodes
+        if comment is not None
+    )
     return valid_comments, comments.page_info.next_cursor
 
 
 def _revisions_from_graphql(
     history: _GraphqlPRHistory | None,
-) -> tuple[GithubPRRevision, ...]:
+) -> tuple[PRRevision, ...]:
     timeline = history.timeline_items if history is not None else None
     if timeline is None:
         return ()
     nodes = timeline.nodes or ()
     return tuple(
-        GithubPRRevision(
+        PRRevision(
             before_commit_id=event.before_commit.oid,
             commit_id=event.after_commit.oid,
             is_current=index == len(nodes) - 1,

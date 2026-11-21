@@ -10,12 +10,13 @@ from jj_stack.console import ActionStatus
 from jj_stack.errors import CliError
 from jj_stack.forge.errors import ForgeError
 from jj_stack.forge.github.client import PR_PAGE_SIZE, GithubClient
-from jj_stack.forge.github.models import GithubIssueComment, GithubStack
+from jj_stack.forge.github.models import GithubStack
 from jj_stack.forge.github.overview_comments import (
     STACK_OVERVIEW_COMMENT_LABEL,
     delete_stack_overview_comment,
 )
-from jj_stack.forge.models import PullRequest
+from jj_stack.forge.models import PRComment, PullRequest
+from jj_stack.forge.protocol import Forge
 from jj_stack.formatting import format_pr_label
 from jj_stack.jj.client import JjClient, PRRefUpdate
 from jj_stack.stack.change_state import (
@@ -57,7 +58,7 @@ def blocked_pr_action(state: UntrustedPR) -> CleanupAction:
 
 async def close_pr_on_trunk(
     *,
-    github_client: GithubClient,
+    github_client: Forge,
     pr: PullRequest,
     trunk_branch: str,
 ) -> Message | None:
@@ -85,9 +86,9 @@ async def close_pr_on_trunk(
 
 async def apply_overview_comment_cleanup(
     *,
-    comment: GithubIssueComment | None,
+    comment: PRComment | None,
     dry_run: bool,
-    github_client: GithubClient,
+    github_client: Forge,
     pr_number: int,
 ) -> tuple[tuple[CleanupAction, ...], bool]:
     """Delete one overview comment identified during cleanup planning."""

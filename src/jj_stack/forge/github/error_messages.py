@@ -6,13 +6,14 @@ from collections.abc import Awaitable
 
 from jj_stack.errors import CliError
 from jj_stack.forge.errors import ForgeError
-from jj_stack.forge.github.client import REPO_NOT_FOUND_REASON, GithubClient
-from jj_stack.forge.github.models import GithubRepo
+from jj_stack.forge.github.client import REPO_NOT_FOUND_REASON
 from jj_stack.forge.github.resolution import (
     GithubRepoAddress,
     GithubTarget,
     UnresolvedGithubTarget,
 )
+from jj_stack.forge.models import Repo
+from jj_stack.forge.protocol import Forge
 from jj_stack.models.git import GitRemote
 from jj_stack.ui import Message, cmd, code
 
@@ -36,7 +37,7 @@ async def read_or_stop[T](
         raise CliError(message, hint=hint) from error
 
 
-async def observe_github_repo(github: GithubClient, *, hint: Message | None = None) -> GithubRepo:
+async def observe_github_repo(github: Forge, *, hint: Message | None = None) -> Repo:
     try:
         return await github.get_repo()
     except ForgeError as error:

@@ -31,7 +31,6 @@ import jj_stack.console as console
 import jj_stack.ui as ui
 from jj_stack.bootstrap import CommandContext, GlobalOptions, bootstrap_context
 from jj_stack.errors import CliError
-from jj_stack.forge.github.client import GithubClient
 from jj_stack.forge.github.pr_refs import (
     load_pr,
     parse_repo_pr_reference,
@@ -43,6 +42,7 @@ from jj_stack.forge.github.resolution import (
     select_submit_remote,
 )
 from jj_stack.forge.models import PullRequest
+from jj_stack.forge.protocol import Forge
 from jj_stack.formatting import format_pr_label, format_pr_number
 from jj_stack.identifiers import ChangeId, CommitId, short_change_id
 from jj_stack.models.tracking import PRIdentity, SubmittedBaseline, TrackedPR
@@ -121,7 +121,7 @@ async def _run_relink_async(
     remote = select_submit_remote(client.list_git_remotes())
     repo = require_github_repo(remote)
     pr_number = parse_repo_pr_reference(reference=pr_reference, github_repo=repo)
-    async with context.open_github_client(repo=repo) as github_client:
+    async with context.open_forge(repo=repo) as github_client:
         pr, head_sha = await _load_exact_relink_pr(
             github_client=github_client,
             pr_number=pr_number,
@@ -208,7 +208,7 @@ async def _run_relink_async(
 
 async def _load_exact_relink_pr(
     *,
-    github_client: GithubClient,
+    github_client: Forge,
     pr_number: int,
     repo: GithubRepoAddress,
 ) -> tuple[PullRequest, CommitId]:

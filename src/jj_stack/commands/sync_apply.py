@@ -9,10 +9,10 @@ import jj_stack.console as console
 import jj_stack.ui as ui
 from jj_stack.bootstrap import CommandContext
 from jj_stack.commands.cleanup.command import cleanup_tracked_prs
-from jj_stack.commands.github_run import GithubRun, ObservedTrunk
 from jj_stack.commands.sync_prs import refresh_selected_prs
 from jj_stack.forge.errors import ForgeError
 from jj_stack.forge.github.models import GithubStack
+from jj_stack.forge.github.run import GithubRun, ObservedTrunk
 from jj_stack.forge.models import PullRequest
 from jj_stack.formatting import format_pr_label
 from jj_stack.identifiers import ChangeId, CommitId, short_change_id

@@ -37,7 +37,6 @@ from jj_stack.commands.cleanup.command import (
     cleanup_stack_without_local_copies,
     cleanup_tracked_prs,
 )
-from jj_stack.commands.github_run import GithubRun, ObservedTrunk
 from jj_stack.commands.submit.render import print_selected_line
 from jj_stack.commands.sync_apply import apply_pr_finishes, apply_selected_convergence
 from jj_stack.concurrency import wait_for_read_tasks
@@ -51,6 +50,7 @@ from jj_stack.errors import (
 from jj_stack.forge.errors import ForgeError
 from jj_stack.forge.github.error_messages import require_github_target
 from jj_stack.forge.github.resolution import resolve_github_target
+from jj_stack.forge.github.run import GithubRun, ObservedTrunk
 from jj_stack.formatting import format_pr_label
 from jj_stack.identifiers import ChangeId, CommitId, is_change_id_prefix, short_change_id
 from jj_stack.jj.client import quote_revset_symbol
@@ -118,7 +118,7 @@ async def _sync_async(
     revset: str | None,
 ) -> int:
     target = require_github_target(resolve_github_target(context.jj_client.list_git_remotes()))
-    async with context.open_github_client(repo=target.repo) as github:
+    async with context.open_forge(repo=target.repo) as github:
         run = GithubRun(context=context, dry_run=dry_run, github=github, target=target)
         if all_:
             return await _run_all_convergence(run)

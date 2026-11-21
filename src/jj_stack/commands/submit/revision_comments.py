@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import jj_stack.console as console
 from jj_stack.concurrency import run_bounded_tasks
-from jj_stack.forge.github.client import GithubClient
-from jj_stack.forge.github.models import GithubIssueComment, GithubPRRevision
+from jj_stack.forge.models import PRComment, PRRevision
+from jj_stack.forge.protocol import Forge
 from jj_stack.identifiers import CommitId, short_commit_id
 
 from .managed_comments import upsert_managed_comment
@@ -18,9 +18,9 @@ type SubmittedForcePush = tuple[CommitId, CommitId]
 
 async def sync_revision_history_comments(
     *,
-    comments_by_pr_number: dict[int, GithubIssueComment | None],
-    revisions_by_pr: dict[int, tuple[GithubPRRevision, ...]],
-    github_client: GithubClient,
+    comments_by_pr_number: dict[int, PRComment | None],
+    revisions_by_pr: dict[int, tuple[PRRevision, ...]],
+    github_client: Forge,
     pr_numbers: tuple[int, ...],
     submitted_force_pushes_by_pr: dict[int, SubmittedForcePush],
 ) -> None:
@@ -47,9 +47,9 @@ async def sync_revision_history_comments(
 
 async def _sync_revision_history_comment(
     *,
-    existing_comment: GithubIssueComment | None,
-    revisions: tuple[GithubPRRevision, ...],
-    github_client: GithubClient,
+    existing_comment: PRComment | None,
+    revisions: tuple[PRRevision, ...],
+    github_client: Forge,
     pr_number: int,
 ) -> None:
     if not revisions:
@@ -68,9 +68,9 @@ async def _sync_revision_history_comment(
 
 
 def _include_submitted_force_push(
-    revisions: tuple[GithubPRRevision, ...],
+    revisions: tuple[PRRevision, ...],
     submitted_force_push: SubmittedForcePush | None,
-) -> tuple[GithubPRRevision, ...]:
+) -> tuple[PRRevision, ...]:
     """Add this submit's force push to the history observed before publication."""
 
     if submitted_force_push is None:
@@ -88,7 +88,7 @@ def _include_submitted_force_push(
     )
     return (
         *prior_revisions,
-        GithubPRRevision(
+        PRRevision(
             before_commit_id=before_commit_id,
             commit_id=commit_id,
             is_current=True,
@@ -99,7 +99,7 @@ def _include_submitted_force_push(
 
 def _revision_history_body(
     *,
-    revisions: tuple[GithubPRRevision, ...],
+    revisions: tuple[PRRevision, ...],
     repo_full_name: str,
 ) -> str:
     revisions = revisions[-REVISION_HISTORY_VERSION_LIMIT:]

@@ -38,7 +38,6 @@ import jj_stack.console as console
 import jj_stack.ui as ui
 from jj_stack.bootstrap import CommandContext, GlobalOptions, bootstrap_context
 from jj_stack.commands.cleanup.command import cleanup_stack_without_local_copies
-from jj_stack.commands.github_run import GithubRun, ObservedTrunk
 from jj_stack.commands.sync import converge_selected_stack
 from jj_stack.concurrency import wait_for_read_tasks
 from jj_stack.config import MergeMethod
@@ -50,8 +49,9 @@ from jj_stack.forge.github.error_messages import (
     read_or_stop,
     require_github_target,
 )
-from jj_stack.forge.github.models import GithubRepo
 from jj_stack.forge.github.resolution import GithubTarget, resolve_github_target
+from jj_stack.forge.github.run import GithubRun, ObservedTrunk
+from jj_stack.forge.models import Repo
 from jj_stack.formatting import pr_url
 from jj_stack.identifiers import ChangeId, short_change_id
 from jj_stack.models.stack import LocalCommit, LocalStack
@@ -133,7 +133,7 @@ async def _run_merge(
     options: MergeOptions,
 ) -> int:
     target = require_github_target(resolve_github_target(context.jj_client.list_git_remotes()))
-    async with context.open_github_client(repo=target.repo) as github_client:
+    async with context.open_forge(repo=target.repo) as github_client:
         outcome, trunk, prepared_merge = await _request_when_checks_pass(
             context=context,
             options=options,
@@ -418,7 +418,7 @@ def _resolve_merge_method(
     changes: Sequence[LocalCommit],
     configured: MergeMethod | None,
     merge_method: MergeMethod | None,
-    repo_state: GithubRepo,
+    repo_state: Repo,
 ) -> MergeMethod:
     """Honor explicit choices; require one for signed stacks with several allowed methods."""
 

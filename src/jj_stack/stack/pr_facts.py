@@ -13,9 +13,9 @@ from jj_stack.concurrency import wait_for_read_tasks
 from jj_stack.errors import CliError
 from jj_stack.forge.errors import ForgeError
 from jj_stack.forge.github.client import GithubClient
-from jj_stack.forge.github.models import GithubRepo, GithubStack
+from jj_stack.forge.github.models import GithubStack
 from jj_stack.forge.github.stack_availability import github_stacks_unavailable_error
-from jj_stack.forge.models import PullRequest
+from jj_stack.forge.models import PullRequest, Repo
 from jj_stack.identifiers import ChangeId, CommitId
 from jj_stack.models.tracking import TrackingState
 from jj_stack.stack.change_state import UNOBSERVED, TrackedPRObservation
@@ -27,7 +27,7 @@ from jj_stack.stack.trunk_evidence import CommitAncestry
 class RepoFacts:
     """PR and branch observations used to check command preconditions."""
 
-    github_repo: GithubRepo
+    github_repo: Repo
     # Contains an entry, possibly empty, for each branch whose dependents were observed.
     prs_by_base: Mapping[str, tuple[PullRequest, ...]]
     repo: github_resolution.GithubRepoAddress
@@ -42,7 +42,7 @@ async def observe_prs(
     remote_name: str,
     state: TrackingState,
     branch_reads: Literal["none", "targets", "targets_and_prs"] = "targets",
-    github_repo_snapshot: GithubRepo | None = None,
+    github_repo_snapshot: Repo | None = None,
     local_commits: StackObservation | None = None,
 ) -> RepoFacts:
     """Read PR state plus the head-branch reads that `branch_reads` names."""
