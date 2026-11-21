@@ -7,11 +7,11 @@ import pytest
 
 from jj_stack.commands.merge import command as merge_command
 from jj_stack.commands.merge.checks import ChecksPending
-from jj_stack.commands.merge.github_stack import PendingMerge
 from jj_stack.errors import EXIT_FORGE, CliError
 from jj_stack.forge.errors import ForgeError
 from jj_stack.forge.github.client import GithubClient
 from jj_stack.forge.github.overview_comments import STACK_OVERVIEW_COMMENT_MARKER
+from jj_stack.forge.github.stack_merge import PendingMerge
 from jj_stack.jj.client import JjClient
 from jj_stack.state.operation_lock import try_acquire_operation_lock
 from jj_stack.state.store import TrackingStore
@@ -56,7 +56,7 @@ def test_merge_waits_for_required_checks_before_requesting_and_syncs(
     fake_repo.branch_rules["main"] = FakeMergeRequirements(checks=("build", "test"))
     fake_repo.prs[1].checks = {"build": "SUCCESS", "optional": "FAILURE"}
     fake_repo.prs[2].checks = {"build": "IN_PROGRESS", "test": "SUCCESS"}
-    monkeypatch.setattr("jj_stack.commands.merge.wait._QUEUE_POLL_INTERVAL_SECONDS", 0)
+    monkeypatch.setattr("jj_stack.forge.github.stack_merge_wait._QUEUE_POLL_INTERVAL_SECONDS", 0)
     state_store = TrackingStore.for_repo(repo)
     before = state_store.load()
     waits = 0
@@ -230,7 +230,7 @@ def test_merge_no_wait_resumes_a_pending_or_queued_request_and_syncs_after_waiti
 
     # While GitHub works through its queue, other jj-stack commands can still run: each queue
     # observation finds the repo's operation lock free. The local update afterwards holds it.
-    monkeypatch.setattr("jj_stack.commands.merge.wait._QUEUE_POLL_INTERVAL_SECONDS", 0)
+    monkeypatch.setattr("jj_stack.forge.github.stack_merge_wait._QUEUE_POLL_INTERVAL_SECONDS", 0)
     state_dir = TrackingStore.for_repo(repo).path.parent
 
     def lock_is_free() -> bool:
@@ -280,7 +280,7 @@ def test_merge_reports_a_queue_ejection_and_the_documented_recovery_completes(
     config_path = configure_submit_environment(monkeypatch, tmp_path, fake_repo)
     fake_repo.github_stacks = {7: (1, 2)}
     fake_repo.merge_queue_enabled = True
-    monkeypatch.setattr("jj_stack.commands.merge.wait._QUEUE_POLL_INTERVAL_SECONDS", 0)
+    monkeypatch.setattr("jj_stack.forge.github.stack_merge_wait._QUEUE_POLL_INTERVAL_SECONDS", 0)
     state_store = TrackingStore.for_repo(repo)
     bottom, top = selected_stack(repo).changes
     head = top.change_id
