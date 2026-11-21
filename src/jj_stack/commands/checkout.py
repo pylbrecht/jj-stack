@@ -37,7 +37,8 @@ import jj_stack.ui as ui
 from jj_stack.bootstrap import CommandContext, GlobalOptions, bootstrap_context
 from jj_stack.concurrency import wait_for_read_tasks
 from jj_stack.errors import CliError, UsageError
-from jj_stack.forge.github.client import GithubClient, GithubClientError
+from jj_stack.forge.errors import ForgeError
+from jj_stack.forge.github.client import GithubClient
 from jj_stack.forge.github.error_messages import observe_github_repo
 from jj_stack.forge.github.pr_refs import (
     load_pr,
@@ -354,7 +355,7 @@ async def _load_pr_chain(
                 base,
                 (),
             )
-        except GithubClientError as error:
+        except ForgeError as error:
             raise CliError(f"Could not inspect pull request branch {base}") from error
         if len(matches) != 1:
             raise CliError(
@@ -465,7 +466,7 @@ async def _pick_stack(
         prs = await github_client.get_prs_by_numbers(
             pr_numbers=tuple(member.number for stack in github_stacks for member in stack.prs),
         )
-    except GithubClientError as error:
+    except ForgeError as error:
         raise CliError("Could not list GitHub stacks for checkout.") from error
     choices = _picker_choices(
         github_stacks=github_stacks,

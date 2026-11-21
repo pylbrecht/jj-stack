@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 from jj_stack.errors import CliError
-from jj_stack.forge.github.client import GithubClient, GithubClientError
+from jj_stack.forge.errors import ForgeError
+from jj_stack.forge.github.client import GithubClient
 
 STACK_OVERVIEW_COMMENT_LABEL = "stack overview comment"
 STACK_OVERVIEW_COMMENT_MARKER = "<!-- jj-stack-overview -->"
@@ -20,8 +21,8 @@ async def delete_stack_overview_comment(
         await github_client.delete_issue_comment(
             comment_id=comment_id,
         )
-    except GithubClientError as error:
-        if error.status_code == 404:
+    except ForgeError as error:
+        if error.kind == "not_found":
             return False
         raise CliError(
             f"Could not delete {STACK_OVERVIEW_COMMENT_LABEL} #{comment_id}"

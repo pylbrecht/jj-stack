@@ -7,7 +7,8 @@ from collections.abc import Awaitable, Callable, Sequence
 import jj_stack.ui as ui
 from jj_stack.concurrency import run_bounded_tasks
 from jj_stack.errors import CliError
-from jj_stack.forge.github.client import GithubClient, GithubClientError
+from jj_stack.forge.errors import ForgeError
+from jj_stack.forge.github.client import GithubClient
 from jj_stack.formatting import format_pr_number
 from jj_stack.models.github import GithubPR, GithubPRReview
 from jj_stack.models.tracking import (
@@ -30,7 +31,7 @@ async def _github_request[Result](
 ) -> Result:
     try:
         return await request
-    except GithubClientError as error:
+    except ForgeError as error:
         raise CliError(error_message) from error
 
 
@@ -199,7 +200,7 @@ async def _sync_pr_metadata(
                 issue_number=pr_number,
                 labels=labels,
             )
-    except GithubClientError as error:
+    except ForgeError as error:
         pr_label = format_pr_number(pr_number, repo=github_client.repo)
         raise CliError(
             t"Could not update the reviewers or labels of pull request {pr_label}"

@@ -16,7 +16,7 @@ type ErrorHint = Message
 EXIT_FAILURE = 1
 EXIT_NO_STACK = 2
 EXIT_CONFLICTS = 3
-EXIT_GITHUB = 4
+EXIT_FORGE = 4
 EXIT_USAGE = 5
 EXIT_AMBIGUOUS = 6
 EXIT_INCOMPLETE = 10
@@ -28,7 +28,7 @@ EXIT_INTERRUPTED = 130
 class SummarizedError(RuntimeError):
     """Errors that carry their own one-line user-facing reason.
 
-    Adapter errors (e.g. the GitHub client) subclass this so `error_message`
+    Adapter errors (e.g. `ForgeError`) subclass this so `error_message`
     can render a concise reason without depending on the adapter module.
     """
 

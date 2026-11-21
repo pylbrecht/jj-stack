@@ -6,7 +6,8 @@ import subprocess
 from pathlib import Path
 
 from jj_stack.errors import EXIT_AMBIGUOUS, EXIT_FAILURE, EXIT_INCOMPLETE, EXIT_NO_STACK
-from jj_stack.forge.github.client import GithubClient, GithubClientError
+from jj_stack.forge.errors import ForgeError
+from jj_stack.forge.github.client import GithubClient
 from jj_stack.identifiers import short_change_id
 from jj_stack.jj.client import JjClient
 from jj_stack.models.github_details import GithubCheck, GithubPRMergeDetails, GithubReviewThread
@@ -68,7 +69,7 @@ def test_verbose_view_omits_details_on_lookup_failure_and_shows_evidence_on_retr
 
     async def get_details(self, *, prs):
         if details_unavailable:
-            raise GithubClientError("GitHub request failed: 403", status_code=403)
+            raise ForgeError("GitHub request failed: 403", kind="auth")
         return {pr.number: evidence for pr in prs}
 
     monkeypatch.setattr(GithubClient, "get_pr_merge_details", get_details)
@@ -497,12 +498,9 @@ def test_view_preserves_saved_identity_when_github_lookup_fails(
 
     class FailingPRLookupClient(GithubClient):
         async def get_open_prs_by_head_refs(self, *, head_refs):
-            raise GithubClientError(
-                "GitHub request failed: 403",
-                body='{"message":"Forbidden"}',
-                rate_limit="primary",
-                rate_limit_reset_seconds=3600,
-                status_code=403,
+            raise ForgeError(
+                "GitHub primary rate limit reached, resets in about 60 min - rerun later",
+                kind="rate_limited",
             )
 
     patch_github_client_builders(

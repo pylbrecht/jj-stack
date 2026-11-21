@@ -19,7 +19,7 @@ from pydantic import AliasPath, BaseModel, ConfigDict, Field, TypeAdapter, Valid
 
 from jj_stack.concurrency import DEFAULT_BOUNDED_CONCURRENCY, wait_for_read_tasks
 from jj_stack.config import MergeMethod
-from jj_stack.errors import EXIT_GITHUB, SummarizedError
+from jj_stack.forge.errors import ForgeError, ForgeErrorKind
 from jj_stack.forge.github.auth import github_token
 from jj_stack.forge.github.resolution import GithubRepoAddress
 from jj_stack.identifiers import CommitId
@@ -90,81 +90,79 @@ class _RestErrorBody(BaseModel):
     errors: tuple[_RestErrorDetail, ...] = ()
 
 
-class GithubClientError(SummarizedError):
-    """Raised when a GitHub request fails or returns an unusable response."""
+_STATUS_ERROR_KINDS: dict[int, ForgeErrorKind] = {
+    400: "invalid",
+    401: "auth",
+    403: "auth",
+    404: "not_found",
+    409: "conflict",
+    422: "invalid",
+}
 
-    exit_code = EXIT_GITHUB
 
-    def __init__(
-        self,
-        message: str,
-        *,
-        body: str = "",
-        graphql_errors: tuple[GraphqlError, ...] = (),
-        rate_limit: RateLimitKind | None = None,
-        rate_limit_reset_seconds: float | None = None,
-        status_code: int | None = None,
-    ) -> None:
-        super().__init__(message)
-        self.body = body
-        self.graphql_errors = graphql_errors
-        self.rate_limit = rate_limit
-        self.rate_limit_reset_seconds = rate_limit_reset_seconds
-        self.status_code = status_code
+def _unusable_response(detail: str, *, kind: ForgeErrorKind = "unavailable") -> ForgeError:
+    """A failure with no HTTP error status, such as a transport error or an unusable body."""
 
-    def is_repo_not_found(self) -> bool:
-        """Whether GitHub reported the repository itself as unresolvable."""
+    return ForgeError(f"request failed ({detail.strip()})", kind=kind)
 
-        return any(
-            error.type == "NOT_FOUND" and error.path == ("repository",)
-            for error in self.graphql_errors
+
+def _status_error(
+    status_code: int,
+    *,
+    body: str,
+    rate_limit: RateLimitKind | None,
+    rate_limit_reset_seconds: float | None,
+) -> ForgeError:
+    """Interpret a failed HTTP status and GitHub's JSON error body."""
+
+    forge_message = _github_message(body)
+    kind = (
+        "rate_limited"
+        if rate_limit is not None
+        else _STATUS_ERROR_KINDS.get(
+            status_code, "unavailable" if status_code >= 500 else "other"
         )
+    )
+    if status_code == 401:
+        message = "authentication failed - check GITHUB_TOKEN, GH_TOKEN, or your gh login"
+    elif status_code == 403 and rate_limit is not None:
+        # GitHub refuses a rate-limited request with the same status as a token problem, and
+        # the retries give up long before a primary limit resets.
+        reset = rate_limit_reset_seconds
+        minutes = None if reset is None else max(1, ceil(reset / 60))
+        resets = "" if minutes is None else f", resets in about {minutes} min"
+        message = f"GitHub {rate_limit} rate limit reached{resets} - rerun later"
+    elif status_code == 403:
+        message = "access denied - check that your token can access the repo"
+    elif forge_message:
+        message = f"request failed (GitHub {status_code}: {forge_message})"
+    else:
+        message = f"request failed (GitHub {status_code})"
+    return ForgeError(message, kind=kind, forge_message=forge_message)
 
-    def github_message(self) -> str:
-        """Return GitHub's own explanation from the JSON body, bounded in length."""
 
-        try:
-            body = _RestErrorBody.model_validate_json(self.body)
-        except ValidationError:
-            return ""
-        reasons = (body.message, *(error.message for error in body.errors))
-        quoted = ": ".join(reason for reason in reasons if reason.strip())
-        # The body is remote input on its way to a terminal, so drop anything unprintable
-        # rather than forwarding an escape sequence.
-        printable = "".join(character if character.isprintable() else " " for character in quoted)
-        shortened = shorten(printable, width=200, placeholder=" ...")
-        # A single oversized token shortens to nothing but the placeholder, which says less
-        # than the bare status does.
-        return "" if shortened.strip() == "..." else shortened
+def _graphql_error(errors: tuple[GraphqlError, ...]) -> ForgeError:
+    if any(error.type == "NOT_FOUND" and error.path == ("repository",) for error in errors):
+        return ForgeError(REPO_NOT_FOUND_REASON, kind="not_found")
+    return _unusable_response("; ".join(error.message for error in errors))
 
-    def request_failure_detail(self) -> str:
-        """Return the status and GitHub's explanation if known, otherwise the message."""
 
-        if self.graphql_errors:
-            return "; ".join(error.message for error in self.graphql_errors)
-        if self.status_code is None:
-            return str(self).strip()
-        if reason := self.github_message():
-            return f"GitHub {self.status_code}: {reason}"
-        return f"GitHub {self.status_code}"
+def _github_message(body: str) -> str:
+    """Return GitHub's own explanation from the JSON body, bounded in length."""
 
-    def user_facing_reason(self) -> str:
-        """Render a concise failure reason suitable after an action prefix."""
-
-        if self.status_code == 401:
-            return "authentication failed - check GITHUB_TOKEN, GH_TOKEN, or your gh login"
-        if self.status_code == 403:
-            # GitHub refuses a rate-limited request with the same status as a token problem,
-            # and the retries give up long before a primary limit resets.
-            if self.rate_limit is not None:
-                reset = self.rate_limit_reset_seconds
-                minutes = None if reset is None else max(1, ceil(reset / 60))
-                resets = "" if minutes is None else f", resets in about {minutes} min"
-                return f"GitHub {self.rate_limit} rate limit reached{resets} - rerun later"
-            return "access denied - check that your token can access the repo"
-        if self.is_repo_not_found():
-            return REPO_NOT_FOUND_REASON
-        return f"request failed ({self.request_failure_detail()})"
+    try:
+        parsed = _RestErrorBody.model_validate_json(body)
+    except ValidationError:
+        return ""
+    reasons = (parsed.message, *(error.message for error in parsed.errors))
+    quoted = ": ".join(reason for reason in reasons if reason.strip())
+    # The body is remote input on its way to a terminal, so drop anything unprintable rather
+    # than forwarding an escape sequence.
+    printable = "".join(character if character.isprintable() else " " for character in quoted)
+    shortened = shorten(printable, width=200, placeholder=" ...")
+    # A single oversized token shortens to nothing but the placeholder, which says less than
+    # the bare status does.
+    return "" if shortened.strip() == "..." else shortened
 
 
 class _GraphqlPRConnection(BaseModel):
@@ -186,7 +184,7 @@ class _GraphqlPageInfo(BaseModel):
     @property
     def next_cursor(self) -> str | None:
         if self.has_next_page and not self.end_cursor:
-            raise GithubClientError("GitHub reported another page without a pagination cursor.")
+            raise _unusable_response("GitHub reported another page without a pagination cursor.")
         return self.end_cursor if self.has_next_page else None
 
 
@@ -513,7 +511,9 @@ class GithubClient:
     ) -> GithubPR:
         pr = (await self.get_prs_by_numbers(pr_numbers=(pr_number,)))[pr_number]
         if pr is None:
-            raise GithubClientError(f"GitHub has no pull request #{pr_number}.")
+            raise _unusable_response(
+                f"GitHub has no pull request #{pr_number}.", kind="not_found"
+            )
         return pr
 
     async def get_prs_by_numbers(
@@ -1028,7 +1028,7 @@ class GithubClient:
                         json=json,
                     )
             except httpx2.RequestError as error:
-                raise GithubClientError(f"could not reach GitHub: {error}") from error
+                raise _unusable_response(f"could not reach GitHub: {error}") from error
 
             retry_after_seconds = _retry_after_seconds(
                 attempt=attempt,
@@ -1126,12 +1126,9 @@ class GithubClient:
         )
         errors = envelope.errors
         if errors and not (tolerate_missing_selections and _only_unresolvable_aliases(errors)):
-            summary = "; ".join(error.message for error in errors)
-            raise GithubClientError(
-                f"GitHub {response_name} failed: {summary}", graphql_errors=errors
-            )
+            raise _graphql_error(errors)
         if envelope.data is None:
-            raise GithubClientError(f"GitHub {response_name} response was missing `data`.")
+            raise _unusable_response(f"GitHub {response_name} response was missing `data`.")
         return envelope.data
 
 
@@ -1142,12 +1139,11 @@ def _expect_success(response: httpx2.Response) -> None:
         response.raise_for_status()
     except httpx2.HTTPStatusError as error:
         rate_limit, reset_seconds = _rate_limit_refusal(error.response)
-        raise GithubClientError(
-            f"GitHub request failed: {error.response.status_code}",
+        raise _status_error(
+            error.response.status_code,
             body=error.response.text,
             rate_limit=rate_limit,
             rate_limit_reset_seconds=reset_seconds,
-            status_code=error.response.status_code,
         ) from error
 
 
@@ -1497,7 +1493,7 @@ def _consume_merge_details_page[NodeT](
     if number not in pending:
         return ()
     if page is None and not absent_ok:
-        raise GithubClientError(f"GitHub omitted review threads for PR #{number}.")
+        raise _unusable_response(f"GitHub omitted review threads for PR #{number}.")
     cursor = page.page_info.next_cursor if page is not None else None
     if cursor is None:
         del pending[number]
@@ -1781,7 +1777,7 @@ def _graphql_document(document: str) -> str:
 def _branch_target(ref: _GraphqlRef) -> tuple[str, CommitId]:
     qualified = f"{ref.prefix}{ref.name}"
     if not qualified.startswith("refs/heads/"):
-        raise GithubClientError("GitHub branch lookup returned a non-branch ref.")
+        raise _unusable_response("GitHub branch lookup returned a non-branch ref.")
     return qualified.removeprefix("refs/heads/"), ref.target.oid
 
 
@@ -1870,10 +1866,10 @@ def _json_model[ResponseT](
         raise _invalid_response(context, error) from error
 
 
-def _invalid_response(error_context: str, error: ValidationError) -> GithubClientError:
+def _invalid_response(error_context: str, error: ValidationError) -> ForgeError:
     # The location names the alias, such as the pull request, that GitHub answered badly.
     reasons = "; ".join(
         " ".join((*map(str, detail["loc"][:1]), detail["msg"].removeprefix("Value error, ")))
         for detail in error.errors()
     )
-    return GithubClientError(f"{error_context}: {reasons}.")
+    return _unusable_response(f"{error_context}: {reasons}.")

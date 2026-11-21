@@ -48,7 +48,7 @@ from jj_stack.errors import (
     error_message,
     resolve_exit_code,
 )
-from jj_stack.forge.github.client import GithubClientError
+from jj_stack.forge.errors import ForgeError
 from jj_stack.forge.github.error_messages import require_github_target
 from jj_stack.forge.github.resolution import resolve_github_target
 from jj_stack.formatting import format_pr_label
@@ -204,7 +204,7 @@ async def _run_global_plan(
                 remote=run.target.remote,
                 trunk_commit_id=trunk_commit_id,
             )
-        except GithubClientError as error:
+        except ForgeError as error:
             raise CliError("Could not inspect pull requests") from error
         plan = build_global_convergence_plan(facts=facts)
     for change_id, candidate, reason in plan.blocked:

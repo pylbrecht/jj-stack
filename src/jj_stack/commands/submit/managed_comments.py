@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 from jj_stack.errors import CliError
-from jj_stack.forge.github.client import GithubClient, GithubClientError
+from jj_stack.forge.errors import ForgeError
+from jj_stack.forge.github.client import GithubClient
 from jj_stack.formatting import format_pr_number
 from jj_stack.models.github import GithubIssueComment
 
@@ -30,7 +31,7 @@ async def upsert_managed_comment(
                 comment_id=existing_comment.id,
                 body=body,
             )
-    except GithubClientError as error:
+    except ForgeError as error:
         article = "a " if action == "create" else ""
         pr_label = format_pr_number(pr_number, repo=github_client.repo)
         raise CliError(

@@ -8,7 +8,8 @@ from typing import Literal
 import jj_stack.ui as ui
 from jj_stack.config import MergeMethod
 from jj_stack.errors import CliError
-from jj_stack.forge.github.client import GithubClient, GithubClientError
+from jj_stack.forge.errors import ForgeError
+from jj_stack.forge.github.client import GithubClient
 from jj_stack.forge.github.resolution import GithubRepoAddress
 from jj_stack.formatting import format_pr_label, format_pr_number
 from jj_stack.models.github import GithubPR, GithubStack, GithubStackMerge
@@ -135,7 +136,7 @@ async def prepare_merge_request(
     pr_label = format_pr_label(merge.target.identity.pr_number, repo=github.repo)
     try:
         pr = await github.update_pr(pr_id=merge.target.pr_node_id, base=execution.trunk_branch)
-    except GithubClientError as error:
+    except ForgeError as error:
         raise CliError(
             t"Could not retarget {pr_label} to {ui.bookmark(execution.trunk_branch)}",
             hint="Resolve the GitHub error above, then rerun jj-stack merge.",
@@ -161,8 +162,8 @@ async def execute_async_merge(
             method=method,
             pr_number=merge.target.identity.pr_number,
         )
-    except GithubClientError as error:
-        if error.status_code in {400, 409} and "head" in error.github_message().casefold():
+    except ForgeError as error:
+        if error.kind in {"conflict", "invalid"} and "head" in error.forge_message.casefold():
             return _blocked_result(
                 execution,
                 merge,

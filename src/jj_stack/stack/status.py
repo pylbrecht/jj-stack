@@ -11,9 +11,9 @@ import jj_stack.ui as ui
 from jj_stack.bootstrap import CommandContext
 from jj_stack.concurrency import wait_for_read_tasks
 from jj_stack.errors import CliError, ErrorMessage, error_message
+from jj_stack.forge.errors import ForgeError
 from jj_stack.forge.github.client import (
     GithubClient,
-    GithubClientError,
 )
 from jj_stack.forge.github.resolution import (
     GithubRepoAddress,
@@ -231,7 +231,7 @@ async def _follow_up(
     progress = asyncio.create_task(github_client.get_pr_progress(prs=tuple(reviewed.values())))
     try:
         await wait_for_read_tasks(details, progress)
-    except GithubClientError:
+    except ForgeError:
         return {}, {}
     return details.result(), progress.result()
 
@@ -250,12 +250,11 @@ async def discover_pr_lookups(
     branches = tuple(observations)
     try:
         open_prs_by_branch = await github_client.get_open_prs_by_head_refs(head_refs=branches)
-    except GithubClientError as error:
-        # Auth failures, missing repos, server errors, and transport failures are repo-level: no
-        # per-branch lookup can succeed, so fail the whole inspection rather than reporting
-        # per-branch errors.
-        status_code = error.status_code
-        if status_code is None or status_code in {401, 403, 404} or status_code >= 500:
+    except ForgeError as error:
+        # Auth failures, rate limits, missing repos, server errors, and transport failures are
+        # repo-level: no per-branch lookup can succeed, so fail the whole inspection rather than
+        # reporting per-branch errors.
+        if error.kind in {"auth", "not_found", "rate_limited", "unavailable"}:
             raise CliError(
                 "",
                 hint=t"Run {ui.cmd('jj-stack doctor')} to check GitHub access.",
@@ -293,7 +292,7 @@ async def discover_pr_lookups(
             remembered_prs = await github_client.get_prs_by_numbers(
                 pr_numbers=tuple(remembered.values()),
             )
-        except GithubClientError as error:
+        except ForgeError as error:
             failure = ObservationFailed(
                 f"saved pull request lookup: {error.user_facing_reason()}"
             )

@@ -8,7 +8,8 @@ from dataclasses import dataclass
 import jj_stack.ui as ui
 from jj_stack.console import ActionStatus
 from jj_stack.errors import CliError
-from jj_stack.forge.github.client import PR_PAGE_SIZE, GithubClient, GithubClientError
+from jj_stack.forge.errors import ForgeError
+from jj_stack.forge.github.client import PR_PAGE_SIZE, GithubClient
 from jj_stack.forge.github.overview_comments import (
     STACK_OVERVIEW_COMMENT_LABEL,
     delete_stack_overview_comment,
@@ -76,7 +77,7 @@ async def close_pr_on_trunk(
                 )
         if pr.state == "open":
             await github_client.close_pr(pr_number=pr.number)
-    except GithubClientError as error:
+    except ForgeError as error:
         return t"cannot close {pr_label}: {error.user_facing_reason()}"
     return None
 

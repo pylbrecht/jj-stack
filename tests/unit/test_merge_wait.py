@@ -11,7 +11,8 @@ from jj_stack.commands.merge.plan import MergeChange, MergeExecutionInputs
 from jj_stack.commands.merge.wait import wait_for_merge
 from jj_stack.console import configured_console
 from jj_stack.errors import CliError
-from jj_stack.forge.github.client import GithubClient, GithubClientError
+from jj_stack.forge.errors import ForgeError
+from jj_stack.forge.github.client import GithubClient
 from jj_stack.forge.github.resolution import GithubRepoAddress
 from jj_stack.identifiers import ChangeId, CommitId
 from jj_stack.models.github import GithubBranchRef, GithubPR, GithubPRHead, GithubStackMerge
@@ -180,7 +181,7 @@ def test_queue_wait_stops_if_a_submitted_head_changes():
 
 def test_wait_ends_early_without_cancelling(capsys):
     with pytest.raises(CliError) as caught:
-        asyncio.run(_wait(iter([GithubClientError("connection lost")])))
+        asyncio.run(_wait(iter([ForgeError("connection lost", kind="unavailable")])))
     assert "request may still complete" in str(caught.value)
     assert "jj-stack sync stackhead" in plain_text(caught.value.hint or "")
 

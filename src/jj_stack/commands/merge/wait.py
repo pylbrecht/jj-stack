@@ -9,7 +9,8 @@ from math import ceil
 import jj_stack.console as console
 import jj_stack.ui as ui
 from jj_stack.errors import CliError, DriftError
-from jj_stack.forge.github.client import GithubClient, GithubClientError
+from jj_stack.forge.errors import ForgeError
+from jj_stack.forge.github.client import GithubClient
 from jj_stack.formatting import format_pr_number
 from jj_stack.identifiers import short_commit_id
 from jj_stack.models.github import GithubPR, GithubStackMerge, GithubStackMergeDetails
@@ -54,7 +55,7 @@ async def wait_for_merge(
             hint=t"Rerun {execution.merge_command} to keep waiting, or run "
             t"{execution.sync_command} after GitHub finishes.",
         ) from error
-    except GithubClientError as error:
+    except ForgeError as error:
         raise CliError(
             "Stopped waiting for GitHub's merge result; the request may still complete.",
             hint=execution.sync_after_github,

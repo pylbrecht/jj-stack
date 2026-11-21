@@ -11,7 +11,8 @@ import jj_stack.forge.github.resolution as github_resolution
 from jj_stack.bootstrap import CommandContext
 from jj_stack.concurrency import wait_for_read_tasks
 from jj_stack.errors import CliError
-from jj_stack.forge.github.client import GithubClient, GithubClientError
+from jj_stack.forge.errors import ForgeError
+from jj_stack.forge.github.client import GithubClient
 from jj_stack.forge.github.stack_availability import github_stacks_unavailable_error
 from jj_stack.identifiers import ChangeId, CommitId
 from jj_stack.models.github import GithubPR, GithubRepo, GithubStack
@@ -165,7 +166,7 @@ async def observe_github_stacks(*, github: GithubClient) -> tuple[GithubStack, .
 
     try:
         return await github.list_stacks()
-    except GithubClientError as error:
+    except ForgeError as error:
         unavailable = github_stacks_unavailable_error(error=error, repo=github.repo.full_name)
         if unavailable is not None:
             raise unavailable from None

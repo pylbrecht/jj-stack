@@ -12,11 +12,12 @@ import pytest
 from jj_stack.commands.submit.revision_comments import REVISION_HISTORY_COMMENT_MARKER
 from jj_stack.errors import (
     EXIT_CONFLICTS,
-    EXIT_GITHUB,
+    EXIT_FORGE,
     EXIT_NO_STACK,
     EXIT_USAGE,
 )
-from jj_stack.forge.github.client import GithubClient, GithubClientError
+from jj_stack.forge.errors import ForgeError
+from jj_stack.forge.github.client import GithubClient
 from jj_stack.forge.github.overview_comments import STACK_OVERVIEW_COMMENT_MARKER
 from jj_stack.jj.client import JjClient
 from jj_stack.state.operation_lock import try_acquire_operation_lock
@@ -131,7 +132,7 @@ def test_submit_names_the_auto_merge_pr_that_github_refuses_to_stack(
     commit_file(repo, "feature 2", "feature-2.txt")
     head = selected_stack(repo).head.change_id
 
-    assert run_main(repo, config_path, "submit", head) == EXIT_GITHUB
+    assert run_main(repo, config_path, "submit", head) == EXIT_FORGE
     captured = capsys.readouterr()
     assert "Pull request #1 has auto-merge enabled" in captured.err
     assert "Disable auto-merge on that pull request on GitHub" in captured.err
@@ -817,7 +818,7 @@ def test_submit_github_stack_recovers_lost_create_and_retries_blocked_append(
     class LoseFirstCreateResponseClient(GithubClient):
         async def create_stack(self, *, pr_numbers):
             await super().create_stack(pr_numbers=pr_numbers)
-            raise GithubClientError("Simulated lost response", status_code=500)
+            raise ForgeError("Simulated lost response", kind="unavailable")
 
         async def append_to_stack(self, *, stack_number, pr_numbers):
             appended.append(tuple(pr_numbers))
@@ -836,7 +837,7 @@ def test_submit_github_stack_recovers_lost_create_and_retries_blocked_append(
     )
     state_store = TrackingStore.for_repo(repo)
 
-    assert run_main(repo, config_path, "submit") == EXIT_GITHUB
+    assert run_main(repo, config_path, "submit") == EXIT_FORGE
     assert "jj-stack submit" in capsys.readouterr().err
     assert fake_repo.github_stacks == {1: (1, 2)}
     assert len(state_store.load().prs) == 2
@@ -856,7 +857,7 @@ def test_submit_github_stack_recovers_lost_create_and_retries_blocked_append(
 
     for number in range(3, 6):
         commit_file(repo, f"feature {number}", f"feature-{number}.txt")
-    assert run_main(repo, config_path, "submit") == EXIT_GITHUB
+    assert run_main(repo, config_path, "submit") == EXIT_FORGE
     assert fake_repo.github_stacks == {1: (1, 2)}
     fake_repo.leave_merge_queue((3,), reason="failed_checks")
     assert run_main(repo, config_path, "submit") == 0
@@ -1007,15 +1008,15 @@ def test_submit_stack_preflight_failures_recover_without_persisted_phase(
     class PreflightFailureClient(GithubClient):
         async def list_stacks(self):
             if failure == "availability":
-                raise GithubClientError("Not Found", status_code=404)
+                raise ForgeError("Not Found", kind="not_found")
             if failure == "membership":
-                raise GithubClientError("Simulated membership failure", status_code=500)
+                raise ForgeError("Simulated membership failure", kind="unavailable")
             return await super().list_stacks()
 
         async def unstack(self, *, stack_number):
             result = await super().unstack(stack_number=stack_number)
             if failure == "unstack":
-                raise GithubClientError("Simulated lost unstack response", status_code=500)
+                raise ForgeError("Simulated lost unstack response", kind="unavailable")
             return result
 
     patch_github_client_builders(
@@ -1029,7 +1030,7 @@ def test_submit_stack_preflight_failures_recover_without_persisted_phase(
     prs_before = {number: asdict(pr) for number, pr in fake_repo.prs.items()}
     stacks_before = dict(fake_repo.github_stacks)
 
-    assert run_main(repo, config_path, "submit") == EXIT_GITHUB
+    assert run_main(repo, config_path, "submit") == EXIT_FORGE
     error = capsys.readouterr().err
     assert "GitHub stacked pull requests are unavailable" in error
     assert "https://gh.io/stacksbeta" in error
@@ -1040,7 +1041,7 @@ def test_submit_stack_preflight_failures_recover_without_persisted_phase(
     assert fake_repo.github_stacks == stacks_before
 
     failure = "membership"
-    assert run_main(repo, config_path, "submit") == EXIT_GITHUB
+    assert run_main(repo, config_path, "submit") == EXIT_FORGE
     assert "Could not inspect GitHub stack membership" in capsys.readouterr().err
     assert TrackingStore.for_repo(repo).load() == state_before
     assert remote_refs(fake_repo.git_dir) == remote_before
@@ -1063,7 +1064,7 @@ def test_submit_stack_preflight_failures_recover_without_persisted_phase(
     assert "dissolve GitHub stack #1" in preview
     assert "create a GitHub stack with 2 PRs" in preview
     assert fake_repo.github_stacks == {1: (1, 2)}
-    assert run_main(repo, config_path, "submit", reordered_head) == EXIT_GITHUB
+    assert run_main(repo, config_path, "submit", reordered_head) == EXIT_FORGE
 
     assert TrackingStore.for_repo(repo).load() == state_before
     assert remote_refs(fake_repo.git_dir) == remote_before
@@ -2061,7 +2062,7 @@ def test_submit_reports_published_prs_when_the_overview_update_needs_retrying(
             body: str,
         ):
             if fail_update:
-                raise GithubClientError("GitHub request failed: 404", status_code=404)
+                raise ForgeError("GitHub request failed: 404", kind="not_found")
             return await super().update_issue_comment(comment_id=comment_id, body=body)
 
     app = create_app(fake_repo)
@@ -2083,7 +2084,7 @@ def test_submit_reports_published_prs_when_the_overview_update_needs_retrying(
     )
     captured = capsys.readouterr()
 
-    assert exit_code == EXIT_GITHUB
+    assert exit_code == EXIT_FORGE
     error = " ".join(captured.err.split())
     assert "Published PR #1, PR #2" in error
     assert "Could not update stack overview comment" in error
@@ -2537,9 +2538,9 @@ def test_submit_retry_keeps_a_pr_created_while_another_request_failed(
         async def create_pr(self, *, title, **fields):
             if title == "feature 2":
                 await asyncio.sleep(0.01)
-                raise GithubClientError(
+                raise ForgeError(
                     "Simulated failure for feature 2",
-                    status_code=500,
+                    kind="unavailable",
                 )
             if title == "feature 1":
                 await asyncio.sleep(0.03)
@@ -2610,9 +2611,9 @@ def test_submit_rerun_converges_pr_metadata_after_partial_create_failure(
             nonlocal metadata_failure_injected
             if not metadata_failure_injected:
                 metadata_failure_injected = True
-                raise GithubClientError(
+                raise ForgeError(
                     "Simulated label failure",
-                    status_code=500,
+                    kind="unavailable",
                 )
             await super().add_labels(
                 issue_number=issue_number,
@@ -2626,7 +2627,7 @@ def test_submit_rerun_converges_pr_metadata_after_partial_create_failure(
         client_type=FlakyMetadataClient,
     )
 
-    assert run_main(repo, config_path, "submit") == EXIT_GITHUB
+    assert run_main(repo, config_path, "submit") == EXIT_FORGE
     capsys.readouterr()
 
     stack = selected_stack(repo)
@@ -2772,7 +2773,7 @@ def test_submit_re_request_observes_reviews_before_mutation_and_retries(
     class FailingReviewLoadClient(GithubClient):
         async def list_pr_reviews(self, *, pr_number):
             if fail_review_load and fail_review_load.pop():
-                raise GithubClientError("Simulated review load failure", status_code=500)
+                raise ForgeError("Simulated review load failure", kind="unavailable")
             return await super().list_pr_reviews(pr_number=pr_number)
 
     patch_github_client_builders(
@@ -2817,7 +2818,7 @@ def test_submit_re_request_observes_reviews_before_mutation_and_retries(
     monkeypatch.delenv("VISUAL", raising=False)
     monkeypatch.setenv("EDITOR", editor_command)
 
-    assert run_main(repo, config_path, "submit", "--re-request", "--edit") == EXIT_GITHUB
+    assert run_main(repo, config_path, "submit", "--re-request", "--edit") == EXIT_FORGE
     failed = capsys.readouterr()
     assert remote_refs(fake_repo.git_dir) == submitted_remote_refs
     match = re.search(r"Editor file: (\S+)", failed.out)

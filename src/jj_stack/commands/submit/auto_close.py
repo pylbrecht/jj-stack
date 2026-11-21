@@ -5,7 +5,8 @@ from __future__ import annotations
 import jj_stack.ui as ui
 from jj_stack.concurrency import run_bounded_tasks
 from jj_stack.errors import CliError
-from jj_stack.forge.github.client import GithubClient, GithubClientError
+from jj_stack.forge.errors import ForgeError
+from jj_stack.forge.github.client import GithubClient
 from jj_stack.formatting import format_pr_label
 from jj_stack.identifiers import CommitId
 from jj_stack.jj.client import JjClient
@@ -78,7 +79,7 @@ async def _retarget_pr_base_before_branch_push(
             pr_id=pr.node_id,
             base=trunk_branch,
         )
-    except GithubClientError as error:
+    except ForgeError as error:
         pr_label = format_pr_label(pr.number, url=pr.html_url)
         raise CliError(
             t"Could not retarget {pr_label} to "

@@ -5,8 +5,9 @@ import asyncio
 import httpx2
 import pytest
 
-from jj_stack.errors import EXIT_GITHUB, CliError, resolve_exit_code
-from jj_stack.forge.github.client import REPO_NOT_FOUND_REASON, GithubClient, GithubClientError
+from jj_stack.errors import EXIT_FORGE, CliError, resolve_exit_code
+from jj_stack.forge.errors import ForgeError
+from jj_stack.forge.github.client import REPO_NOT_FOUND_REASON, GithubClient
 from jj_stack.forge.github.error_messages import (
     observe_github_repo,
     repo_lookup_reason,
@@ -24,10 +25,8 @@ from jj_stack.ui import plain_text
 def test_repo_lookup_treats_a_404_as_a_missing_or_hidden_repo() -> None:
     """Only a lookup of the repo itself may read a 404 as "no such repo for this token"."""
 
-    missing = GithubClientError(
-        "GitHub request failed: 404", body='{"message":"Not Found"}', status_code=404
-    )
-    refused = GithubClientError("GitHub request failed: 500", status_code=500)
+    missing = ForgeError("request failed (GitHub 404: Not Found)", kind="not_found")
+    refused = ForgeError("request failed (GitHub 500)", kind="unavailable")
 
     assert repo_lookup_reason(missing) == REPO_NOT_FOUND_REASON
     assert repo_lookup_reason(refused) == "request failed (GitHub 500)"
@@ -47,7 +46,7 @@ def test_repo_lookup_treats_a_404_as_a_missing_or_hidden_repo() -> None:
     wrapped = observe(404)
     assert plain_text(wrapped.message) == "Could not inspect GitHub repo octo-org/repo"
     assert wrapped.hint == REPO_NOT_FOUND_REASON
-    assert resolve_exit_code(wrapped) == EXIT_GITHUB
+    assert resolve_exit_code(wrapped) == EXIT_FORGE
     assert observe(500).hint == "rerun later"
 
 

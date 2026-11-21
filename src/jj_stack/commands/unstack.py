@@ -20,7 +20,8 @@ import jj_stack.ui as ui
 from jj_stack.bootstrap import CommandContext, GlobalOptions, bootstrap_context
 from jj_stack.commands.cleanup.actions import UNTRUSTED_PR_STATES
 from jj_stack.errors import CliError, UsageError
-from jj_stack.forge.github.client import GithubClient, GithubClientError
+from jj_stack.forge.errors import ForgeError
+from jj_stack.forge.github.client import GithubClient
 from jj_stack.forge.github.error_messages import require_github_target
 from jj_stack.forge.github.resolution import resolve_github_target
 from jj_stack.identifiers import ChangeId, short_change_id
@@ -162,8 +163,8 @@ async def _get_github_stack(
 ) -> GithubStack | None:
     try:
         return await github_client.get_stack(stack_number=stack_number)
-    except GithubClientError as error:
-        if error.status_code == 404:
+    except ForgeError as error:
+        if error.kind == "not_found":
             return None
         raise CliError(t"Could not inspect GitHub stack #{stack_number}.") from error
 
@@ -184,7 +185,7 @@ async def _check_selected_prs(
             remote_name=remote_name,
             state=state,
         )
-    except GithubClientError as error:
+    except ForgeError as error:
         raise CliError("Could not inspect the selected pull requests.") from error
 
     rerun = f"jj-stack unstack {short_change_id(change_ids[-1])}"

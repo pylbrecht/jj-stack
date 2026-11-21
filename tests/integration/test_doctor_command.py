@@ -51,7 +51,7 @@ def test_doctor_reports_when_github_stacks_are_unavailable(
 
     class StacksUnavailableClient(GithubClient):
         async def list_stacks(self):
-            raise doctor_mod.GithubClientError("Not Found", status_code=404)
+            raise doctor_mod.ForgeError("Not Found", kind="not_found")
 
     config_path = _configure_doctor_environment(
         monkeypatch,

@@ -11,7 +11,7 @@ from jj_stack.bootstrap import CommandContext
 from jj_stack.commands.cleanup.command import cleanup_tracked_prs
 from jj_stack.commands.github_run import GithubRun, ObservedTrunk
 from jj_stack.commands.sync_prs import refresh_selected_prs
-from jj_stack.forge.github.client import GithubClientError
+from jj_stack.forge.errors import ForgeError
 from jj_stack.formatting import format_pr_label
 from jj_stack.identifiers import ChangeId, CommitId, short_change_id
 from jj_stack.models.github import GithubPR, GithubStack
@@ -69,7 +69,7 @@ async def _apply_pr_finish(run: GithubRun, plan: OnTrunkChange) -> PRFinishResul
     pr_label = format_pr_label(pr.number, url=pr.html_url)
     try:
         await run.github.close_pr(pr_number=pr.number)
-    except GithubClientError as error:
+    except ForgeError as error:
         return PRFinishResult(
             plan.change_id,
             candidate,

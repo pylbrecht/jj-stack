@@ -14,7 +14,8 @@ import httpx2
 
 import jj_stack.bootstrap
 import jj_stack.forge.github.resolution
-from jj_stack.forge.github.client import GithubClient, GithubClientError
+from jj_stack.forge.errors import ForgeError
+from jj_stack.forge.github.client import GithubClient
 from jj_stack.forge.github.resolution import GithubRepoAddress
 from jj_stack.identifiers import CommitId, short_change_id
 from jj_stack.jj.client import JjClient, PRRefUpdate
@@ -82,7 +83,7 @@ class OfflineGithubClient(GithubClient):
     """Fail open-PR lookups like a client with no connection to GitHub."""
 
     async def get_open_prs_by_head_refs(self, *, head_refs):
-        raise GithubClientError("Connection refused")
+        raise ForgeError("Connection refused", kind="unavailable")
 
 
 def configure_fake_github_environment(

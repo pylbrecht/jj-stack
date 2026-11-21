@@ -47,7 +47,8 @@ from jj_stack.errors import (
     error_hint,
     error_message,
 )
-from jj_stack.forge.github.client import GithubClient, GithubClientError
+from jj_stack.forge.errors import ForgeError
+from jj_stack.forge.github.client import GithubClient
 from jj_stack.forge.github.error_messages import remote_and_github_unavailable_messages
 from jj_stack.forge.github.overview_comments import STACK_OVERVIEW_COMMENT_MARKER
 from jj_stack.forge.github.resolution import (
@@ -206,7 +207,7 @@ async def cleanup_tracked_prs(
             github_repo=None if run.trunk is None else run.trunk.github_repo,
             prepared_cleanup=prepared_cleanup,
         )
-    except (CliError, GithubClientError) as error:
+    except (CliError, ForgeError) as error:
         if error_hint(error) is not None:
             raise
         raise CliError(error_message(error), hint=retry_hint()) from error

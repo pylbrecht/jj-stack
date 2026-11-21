@@ -7,7 +7,8 @@ from urllib.parse import urlparse
 
 import jj_stack.ui as ui
 from jj_stack.errors import CliError, UsageError
-from jj_stack.forge.github.client import GithubClient, GithubClientError
+from jj_stack.forge.errors import ForgeError
+from jj_stack.forge.github.client import GithubClient
 from jj_stack.forge.github.resolution import GithubRepoAddress
 from jj_stack.formatting import format_pr_number
 from jj_stack.identifiers import CommitId
@@ -20,7 +21,7 @@ _PR_URL_RE = re.compile(r"^/(?P<owner>[^/]+)/(?P<repo>[^/]+)/pull/(?P<number>[0-
 async def load_pr(*, github_client: GithubClient, pr_number: int) -> GithubPR:
     try:
         return await github_client.get_pr(pr_number=pr_number)
-    except GithubClientError as error:
+    except ForgeError as error:
         pr_label = format_pr_number(pr_number, repo=github_client.repo)
         raise CliError(t"Could not load pull request {pr_label}") from error
 
