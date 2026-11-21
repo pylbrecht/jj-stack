@@ -9,6 +9,7 @@ from jj_stack.state.store import TrackingStore
 
 from ..support.fake_github import create_app
 from ..support.integration_helpers import (
+    NoStacksGithubClient,
     init_fake_github_repo_with_submitted_feature,
     init_fake_github_repo_with_submitted_stack,
     patch_github_client_builders,
@@ -101,16 +102,11 @@ def test_unstack_stops_on_a_forge_without_github_stacks(
     state_before = state_store.load()
     stacks_before = dict(fake_repo.github_stacks)
 
-    class NoStacksClient(GithubClient):
-        @property
-        def stacks(self) -> None:
-            return None
-
     patch_github_client_builders(
         monkeypatch,
         app=create_app(fake_repo),
         fake_repo=fake_repo,
-        client_type=NoStacksClient,
+        client_type=NoStacksGithubClient,
     )
 
     exit_code = run_main(repo, config_path, "unstack", *selection)

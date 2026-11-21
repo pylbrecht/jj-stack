@@ -43,7 +43,6 @@ from jj_stack.concurrency import wait_for_read_tasks
 from jj_stack.config import MergeMethod
 from jj_stack.errors import CliError, error_hint
 from jj_stack.forge.errors import ForgeError
-from jj_stack.forge.github.client import GithubClient
 from jj_stack.forge.github.error_messages import (
     observe_github_repo,
     read_or_stop,
@@ -59,6 +58,7 @@ from jj_stack.forge.github.stack_merge import (
 )
 from jj_stack.forge.merge import MergeChange, MergeExecutionInputs, MergeResult
 from jj_stack.forge.models import Repo
+from jj_stack.forge.protocol import Forge, StackObjects
 from jj_stack.formatting import pr_url
 from jj_stack.identifiers import ChangeId, short_change_id
 from jj_stack.models.stack import LocalCommit, LocalStack
@@ -134,12 +134,17 @@ async def _run_merge(
     options: MergeOptions,
 ) -> int:
     target = require_github_target(resolve_github_target(context.jj_client.list_git_remotes()))
-    async with context.open_forge(repo=target.repo) as github_client:
+    async with context.open_forge(repo=target.repo) as forge:
+        stacks = forge.stacks
+        if stacks is None:
+            raise CliError("merge is not supported on this forge yet.")
+
         outcome, trunk, prepared_merge = await _request_when_checks_pass(
             context=context,
             options=options,
             target=target,
-            github_client=github_client,
+            forge=forge,
+            stacks=stacks,
         )
         if isinstance(outcome, PendingMerge):
             _print_merge_result(outcome.result())
@@ -150,7 +155,7 @@ async def _run_merge(
                     t"{ui.cmd(f'jj-stack sync {prepared_merge.sync_head}')}.",
                 )
                 return 0
-            result = await outcome.wait(github_client)
+            result = await outcome.wait(stacks)
         else:
             result = outcome
         _print_merge_result(result)
@@ -163,7 +168,7 @@ async def _run_merge(
             exit_code = await retry_while_github_catches_up(
                 lambda: _update_local_stack(
                     context=context,
-                    github_client=github_client,
+                    forge=forge,
                     trunk=trunk,
                     prepared_merge=prepared_merge,
                     result=result,
@@ -197,7 +202,8 @@ async def _request_when_checks_pass(
     context: CommandContext,
     options: MergeOptions,
     target: GithubTarget,
-    github_client: GithubClient,
+    forge: Forge,
+    stacks: StackObjects,
 ) -> tuple[MergeResult | PendingMerge, ObservedTrunk, PreparedMerge]:
     expected_changes: tuple[MergeChange, ...] | None = None
     previous_progress: tuple[str, ...] | None = None
@@ -231,7 +237,8 @@ async def _request_when_checks_pass(
             )
             outcome, trunk = await _request_merge_async(
                 prepared_merge,
-                github_client,
+                forge,
+                stacks,
                 wait_for_checks=not (options.dry_run or options.no_wait),
                 expected_changes=expected_changes,
             )
@@ -252,7 +259,7 @@ async def _request_when_checks_pass(
 async def _update_local_stack(
     *,
     context: CommandContext,
-    github_client: GithubClient,
+    forge: Forge,
     trunk: ObservedTrunk,
     prepared_merge: PreparedMerge,
     result: MergeResult,
@@ -263,7 +270,7 @@ async def _update_local_stack(
     run = GithubRun(
         context=context,
         dry_run=False,
-        github=github_client,
+        github=forge,
         target=prepared_merge.target,
         trunk=trunk,
     )
@@ -310,7 +317,8 @@ def _resolve_merge_target(
 
 async def _request_merge_async(
     prepared_merge: PreparedMerge,
-    github_client: GithubClient,
+    forge: Forge,
+    stacks: StackObjects,
     *,
     wait_for_checks: bool,
     expected_changes: tuple[MergeChange, ...] | None,
@@ -320,7 +328,7 @@ async def _request_merge_async(
     remote = prepared_merge.target.remote
 
     with console.spinner(description="Inspecting remotes"):
-        github_repo_state = await observe_github_repo(github_client, hint=_RERUN_HINT)
+        github_repo_state = await observe_github_repo(forge, hint=_RERUN_HINT)
         trunk_branch, _trunk_targets = observe_trunk_branch(
             jj_client=prepared_merge.context.jj_client,
             github_repo_state=github_repo_state,
@@ -330,7 +338,7 @@ async def _request_merge_async(
     trunk = ObservedTrunk(github_repo=github_repo_state, branch=trunk_branch)
     queue_task = asyncio.create_task(
         read_or_stop(
-            github_client.base_branch_uses_merge_queue(branch=trunk_branch),
+            stacks.base_branch_uses_merge_queue(branch=trunk_branch),
             message=t"Could not check whether {ui.bookmark(trunk_branch)} uses a merge queue.",
             hint=_RERUN_HINT,
         )
@@ -340,7 +348,7 @@ async def _request_merge_async(
             observe_prs(
                 change_ids=tuple(change.change_id for change in stack.changes),
                 context=prepared_merge.context,
-                github_client=github_client,
+                github_client=forge,
                 github_repo_snapshot=github_repo_state,
                 remote_name=remote.name,
                 state=prepared_merge.state,
@@ -349,7 +357,7 @@ async def _request_merge_async(
             hint=_RERUN_HINT,
         )
     )
-    stacks_task = asyncio.create_task(observe_github_stacks(github=github_client))
+    stacks_task = asyncio.create_task(observe_github_stacks(github=forge))
     await wait_for_read_tasks(queue_task, prs_task, stacks_task)
     if queue_task.result():
         method = None
@@ -371,14 +379,14 @@ async def _request_merge_async(
             "The selected stack changed while waiting for required checks.",
             hint="Inspect it with jj-stack view, then rerun jj-stack merge.",
         )
-    stacks = stacks_task.result()
+    github_stacks = stacks_task.result()
     execution = MergeExecutionInputs(
-        repo=github_client.repo,
+        repo=forge.repo,
         selected_head=short_change_id(prepared_merge.target_change_id or stack.head.change_id),
         sync_head=prepared_merge.sync_head,
         trunk_branch=trunk_branch,
     )
-    async_merge = build_async_merge_plan(plan, stacks, execution)
+    async_merge = build_async_merge_plan(plan, github_stacks, execution)
     if queue_task.result() and prepared_merge.options.merge_method is not None:
         if expected_changes is None:
             console.warning(
@@ -401,16 +409,16 @@ async def _request_merge_async(
         for change in async_merge.planned
         if (pr := prs_task.result().prs[change.change_id].pr) is not None
     )
-    async_merge, prs = await prepare_merge_request(github_client, async_merge, execution, prs)
+    async_merge, prs = await prepare_merge_request(forge, async_merge, execution, prs)
     if wait_for_checks and async_merge.planned:
-        waiting = await inspect_required_checks(github_client, async_merge.planned, prs)
+        waiting = await inspect_required_checks(forge, async_merge.planned, prs)
         if waiting is not None:
             return waiting, trunk
     return await execute_async_merge(
         execution=execution,
         method=method,
         merge=async_merge,
-        stacks=github_client,
+        stacks=stacks,
     ), trunk
 
 

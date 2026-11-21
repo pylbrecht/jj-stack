@@ -79,6 +79,14 @@ def patch_github_client_builders(
     monkeypatch.setattr("jj_stack.forge.github.resolution.parse_github_repo", parse_github_repo)
 
 
+class NoStacksGithubClient(GithubClient):
+    """Stand in for a forge without GitHub stacks."""
+
+    @property
+    def stacks(self) -> None:
+        return None
+
+
 class OfflineGithubClient(GithubClient):
     """Fail open-PR lookups like a client with no connection to GitHub."""
 

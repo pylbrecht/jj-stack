@@ -40,14 +40,16 @@ class ChecksPending:
 
 
 async def inspect_required_checks(
-    github: Forge, changes: tuple[MergeChange, ...], prs: tuple[PullRequest, ...]
+    forge: Forge,
+    changes: tuple[MergeChange, ...],
+    prs: tuple[PullRequest, ...],
 ) -> ChecksPending | None:
     # Once queued, GitHub tests temporary merge-group commits and owns the queue decision.
     unqueued = tuple(pr for pr in prs if not pr.queued)
     if not unqueued:
         return None
     details = await read_or_stop(
-        github.get_pr_merge_details(prs=unqueued),
+        forge.get_pr_merge_details(prs=unqueued),
         message="Could not inspect required checks before merging.",
         hint="Resolve the GitHub error, then rerun jj-stack merge.",
     )

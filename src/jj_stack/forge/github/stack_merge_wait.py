@@ -171,7 +171,9 @@ def _removal_reason(pr: GithubPullRequest) -> str | None:
 
 
 def _matching_pr(
-    pr: GithubPullRequest | None, change: MergeChange, execution: MergeExecutionInputs
+    pr: GithubPullRequest | None,
+    change: MergeChange,
+    execution: MergeExecutionInputs,
 ) -> GithubPullRequest:
     if pr is None or pr.head.ref != change.identity.head_ref or pr.head.sha != change.commit_id:
         label = format_pr_number(change.identity.pr_number, repo=execution.repo)
