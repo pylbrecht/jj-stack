@@ -38,7 +38,6 @@ from jj_stack.bootstrap import CommandContext, GlobalOptions, bootstrap_context
 from jj_stack.concurrency import wait_for_read_tasks
 from jj_stack.errors import CliError, UsageError
 from jj_stack.forge.errors import ForgeError
-from jj_stack.forge.github.client import GithubClient
 from jj_stack.forge.github.error_messages import observe_github_repo
 from jj_stack.forge.github.models import GithubStack
 from jj_stack.forge.github.pr_refs import (
@@ -443,7 +442,7 @@ def _save_checkout_tracking(
 async def _pick_stack(
     context: CommandContext,
     *,
-    github_client: GithubClient,
+    github_client: Forge,
     repo: GithubRepoAddress,
 ) -> CheckoutPickerChoice:
     """Prompt for one local or GitHub stack without holding the operation lock."""

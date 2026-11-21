@@ -179,6 +179,42 @@ def test_submit_uses_configured_namespace_and_adds_stack_only_when_needed(
     assert all(issue_comments(fake_repo, number) == [] for number in (1, 2))
 
 
+def test_submit_stacks_prs_without_a_github_stack_on_a_forge_without_stacks(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    repo, fake_repo = init_fake_github_repo(tmp_path)
+    config_path = configure_submit_environment(monkeypatch, tmp_path, fake_repo)
+
+    class NoStacksClient(GithubClient):
+        @property
+        def stacks(self) -> None:
+            return None
+
+    patch_github_client_builders(
+        monkeypatch,
+        app=create_app(fake_repo),
+        fake_repo=fake_repo,
+        client_type=NoStacksClient,
+    )
+    commit_file(repo, "feature 1", "feature-1.txt")
+    commit_file(repo, "feature 2", "feature-2.txt")
+
+    preview_exit_code = run_main(repo, config_path, "submit", "--dry-run")
+    preview = capsys.readouterr()
+    exit_code = run_main(repo, config_path, "submit")
+    captured = capsys.readouterr()
+
+    assert preview_exit_code == 0
+    assert "GitHub stack" not in preview.out
+    assert exit_code == 0
+    assert "GitHub stack" not in captured.out
+    assert tuple(fake_repo.prs) == (1, 2)
+    assert fake_repo.prs[2].base_ref == fake_repo.prs[1].head_ref
+    assert fake_repo.github_stacks == {}
+
+
 def test_submit_updates_a_tracked_branch_after_the_prefix_is_renamed(
     tmp_path: Path,
     monkeypatch,

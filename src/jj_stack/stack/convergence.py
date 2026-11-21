@@ -7,6 +7,7 @@ from dataclasses import replace
 import jj_stack.ui as ui
 from jj_stack.errors import CliError
 from jj_stack.forge.github.models import GithubStack
+from jj_stack.forge.github.stack_safety import selected_github_stack
 from jj_stack.formatting import format_pr_label
 from jj_stack.identifiers import ChangeId, CommitId, short_change_id, short_commit_id
 from jj_stack.models.stack import LocalCommit
@@ -24,7 +25,6 @@ from jj_stack.stack.change_state import (
 )
 from jj_stack.stack.convergence_models import OnTrunkChange, SelectedConvergencePlan
 from jj_stack.stack.divergence import divergence_recovery_hint
-from jj_stack.stack.github_stack_safety import selected_github_stack
 from jj_stack.stack.pr_facts import RepoFacts
 from jj_stack.stack.preparation import PreparedLocalStack
 from jj_stack.stack.trunk_evidence import CommitAncestry

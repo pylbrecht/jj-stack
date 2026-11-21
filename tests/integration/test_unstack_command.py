@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from jj_stack.forge.github.client import GithubClient
 from jj_stack.state.store import TrackingStore
 
@@ -83,6 +85,41 @@ def test_unstack_by_number_does_not_require_local_tracking(
 
     assert retry_exit_code == 0
     assert "No GitHub stack #7 was found" in retry.out
+
+
+@pytest.mark.parametrize("by_number", (True, False))
+def test_unstack_stops_on_a_forge_without_github_stacks(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+    by_number: bool,
+) -> None:
+    repo, fake_repo = init_fake_github_repo_with_submitted_stack(tmp_path, size=2)
+    config_path = configure_submit_environment(monkeypatch, tmp_path, fake_repo)
+    selection = ("--stack", "7") if by_number else (selected_stack(repo).head.change_id,)
+    state_store = TrackingStore.for_repo(repo)
+    state_before = state_store.load()
+    stacks_before = dict(fake_repo.github_stacks)
+
+    class NoStacksClient(GithubClient):
+        @property
+        def stacks(self) -> None:
+            return None
+
+    patch_github_client_builders(
+        monkeypatch,
+        app=create_app(fake_repo),
+        fake_repo=fake_repo,
+        client_type=NoStacksClient,
+    )
+
+    exit_code = run_main(repo, config_path, "unstack", *selection)
+    captured = capsys.readouterr()
+
+    assert exit_code == 1
+    assert "jj-stack unstack --local" in _combined_output(captured)
+    assert fake_repo.github_stacks == stacks_before
+    assert state_store.load() == state_before
 
 
 def test_unstack_by_number_reports_a_stack_github_keeps_because_it_is_merged(

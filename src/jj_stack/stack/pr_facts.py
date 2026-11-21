@@ -7,15 +7,14 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Literal
 
-import jj_stack.forge.github.resolution as github_resolution
 from jj_stack.bootstrap import CommandContext
 from jj_stack.concurrency import wait_for_read_tasks
 from jj_stack.errors import CliError
 from jj_stack.forge.errors import ForgeError
-from jj_stack.forge.github.client import GithubClient
 from jj_stack.forge.github.models import GithubStack
 from jj_stack.forge.github.stack_availability import github_stacks_unavailable_error
 from jj_stack.forge.models import PullRequest, Repo
+from jj_stack.forge.protocol import Forge, RepoAddress
 from jj_stack.identifiers import ChangeId, CommitId
 from jj_stack.models.tracking import TrackingState
 from jj_stack.stack.change_state import UNOBSERVED, TrackedPRObservation
@@ -30,7 +29,7 @@ class RepoFacts:
     github_repo: Repo
     # Contains an entry, possibly empty, for each branch whose dependents were observed.
     prs_by_base: Mapping[str, tuple[PullRequest, ...]]
-    repo: github_resolution.GithubRepoAddress
+    repo: RepoAddress
     prs: Mapping[ChangeId, TrackedPRObservation]
 
 
@@ -38,7 +37,7 @@ async def observe_prs(
     *,
     change_ids: tuple[ChangeId, ...],
     context: CommandContext,
-    github_client: GithubClient,
+    github_client: Forge,
     remote_name: str,
     state: TrackingState,
     branch_reads: Literal["none", "targets", "targets_and_prs"] = "targets",
@@ -162,11 +161,17 @@ def classify_observed_commit_ancestries(
     }
 
 
-async def observe_github_stacks(*, github: GithubClient) -> tuple[GithubStack, ...]:
-    """List the repo's GitHub stacks, explaining a repo that cannot use the Stacks API."""
+async def observe_github_stacks(*, github: Forge) -> tuple[GithubStack, ...]:
+    """List the repo's GitHub stacks, explaining a repo that cannot use the Stacks API.
 
+    A forge without GitHub stacks has no stack membership to observe.
+    """
+
+    stacks = github.stacks
+    if stacks is None:
+        return ()
     try:
-        return await github.list_stacks()
+        return await stacks.list_stacks()
     except ForgeError as error:
         unavailable = github_stacks_unavailable_error(error=error, repo=github.repo.full_name)
         if unavailable is not None:

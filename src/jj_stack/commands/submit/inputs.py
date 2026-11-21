@@ -8,6 +8,7 @@ import jj_stack.ui as ui
 from jj_stack.bootstrap import CommandContext
 from jj_stack.errors import CliError, ConflictedStackError, UsageError
 from jj_stack.forge.github.models import GithubStackPR
+from jj_stack.forge.github.stack_planning import GithubStackPRSnapshot, github_stack_pr_snapshot
 from jj_stack.forge.models import PullRequest
 from jj_stack.formatting import format_pr_label
 from jj_stack.identifiers import ChangeId, is_full_change_id, short_change_id
@@ -22,7 +23,6 @@ from jj_stack.stack.selected import (
 )
 
 from .descriptions import resolve_generated_descriptions
-from .github_stack import GithubStackPRSnapshot, github_stack_pr_snapshot
 from .models import ExplicitBase, PublicationInputs, SubmitOptions, SubmitSelection
 
 

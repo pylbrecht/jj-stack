@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import Protocol
 
+from jj_stack.forge.github.models import GithubStack
 from jj_stack.forge.models import (
     PRComment,
     PRProgress,
@@ -23,6 +24,40 @@ class RepoAddress(Protocol):
     def full_name(self) -> str: ...
 
 
+class StackObjects(Protocol):
+    """The forge's own record of an ordered group of pull requests: a GitHub stack.
+
+    A forge without such a record has no `StackObjects`, and its stack membership is empty.
+    """
+
+    async def list_stacks(self) -> tuple[GithubStack, ...]: ...
+
+    async def get_stack(
+        self,
+        *,
+        stack_number: int,
+    ) -> GithubStack: ...
+
+    async def create_stack(
+        self,
+        *,
+        pr_numbers: Sequence[int],
+    ) -> GithubStack: ...
+
+    async def append_to_stack(
+        self,
+        *,
+        stack_number: int,
+        pr_numbers: Sequence[int],
+    ) -> GithubStack: ...
+
+    async def unstack(
+        self,
+        *,
+        stack_number: int,
+    ) -> GithubStack | None: ...
+
+
 class Forge(Protocol):
     """One forge repo that receives the stack's pull requests.
 
@@ -32,6 +67,9 @@ class Forge(Protocol):
 
     @property
     def repo(self) -> RepoAddress: ...
+
+    @property
+    def stacks(self) -> StackObjects | None: ...
 
     async def get_repo(self) -> Repo: ...
 

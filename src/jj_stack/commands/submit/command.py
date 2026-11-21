@@ -391,10 +391,10 @@ async def _observe_submit(
         base_pr = await load_pr(
             github_client=github_client,
             pr_number=parse_repo_pr_reference(
-                github_repo=github_client.repo, reference=options.base_pull_request
+                github_repo=run.target.repo, reference=options.base_pull_request
             ),
         )
-        if (problem := pr_head_repo_problem(base_pr, github_client.repo)) is not None:
+        if (problem := pr_head_repo_problem(base_pr, run.target.repo)) is not None:
             raise CliError(problem)
         if base_pr.state != "open":
             raise CliError(

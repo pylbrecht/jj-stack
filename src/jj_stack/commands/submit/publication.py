@@ -12,17 +12,18 @@ from jj_stack.forge.errors import ForgeError
 from jj_stack.forge.github.models import GithubStack
 from jj_stack.forge.github.overview_comments import STACK_OVERVIEW_COMMENT_MARKER
 from jj_stack.forge.github.run import GithubRun, ObservedTrunk
-from jj_stack.formatting import format_pr_label
-from jj_stack.identifiers import ChangeId, CommitId
-from jj_stack.jj.client import PRRefUpdate
-from jj_stack.stack.github_stack_safety import dissolve_github_stack
-
-from .auto_close import predict_prs_auto_closed_by_push, retarget_pr_bases_before_branch_push
-from .github_stack import (
+from jj_stack.forge.github.stack_planning import (
+    GithubStackPlan,
     apply_github_stack_plan,
     omitted_active_stack_prs,
     plan_github_stack,
 )
+from jj_stack.forge.github.stack_safety import dissolve_github_stack
+from jj_stack.formatting import format_pr_label
+from jj_stack.identifiers import ChangeId, CommitId
+from jj_stack.jj.client import PRRefUpdate
+
+from .auto_close import predict_prs_auto_closed_by_push, retarget_pr_bases_before_branch_push
 from .inputs import confirm_orphaned_pr_snapshots
 from .models import (
     GeneratedDescription,
@@ -94,6 +95,7 @@ async def publish_prepared(
     trunk_targets: dict[str, CommitId],
 ) -> None:
     github_client = run.github
+    stacks = github_client.stacks
     client = prepared_inputs.client
     state = prepared_inputs.state
     prepared_changes = tuple(plan.prepared for plan in pr_plans)
@@ -135,18 +137,22 @@ async def publish_prepared(
     )
     # An orphaned PR left the stack, so its overview belongs to the new head.
     orphaned_pr_numbers = tuple(sorted(number for number, _, _ in orphaned_pr_snapshots))
-    github_stack_plan = plan_github_stack(
-        desired=desired_pr_numbers,
-        is_maximal_path=prepared_inputs.is_maximal_path,
-        observed_stacks=observed_stacks,
-        orphaned_pr_snapshots=orphaned_pr_snapshots,
-        pr_numbers_requiring_base_update={
-            pr.number
-            for plan in pr_plans
-            if (pr := plan.prepared.pr) is not None
-            and (pr.base.ref != plan.base_branch or pr in retarget_prs)
-        },
-        repo=github_client.repo,
+    github_stack_plan = (
+        plan_github_stack(
+            desired=desired_pr_numbers,
+            is_maximal_path=prepared_inputs.is_maximal_path,
+            observed_stacks=observed_stacks,
+            orphaned_pr_snapshots=orphaned_pr_snapshots,
+            pr_numbers_requiring_base_update={
+                pr.number
+                for plan in pr_plans
+                if (pr := plan.prepared.pr) is not None
+                and (pr.base.ref != plan.base_branch or pr in retarget_prs)
+            },
+            repo=github_client.repo,
+        )
+        if stacks is not None
+        else GithubStackPlan("none")
     )
     stacks_to_dissolve = (
         github_stack_plan.affected_stacks if github_stack_plan.action == "replace" else ()
@@ -203,8 +209,13 @@ async def publish_prepared(
             github_stack_plan=github_stack_plan,
         )
         return
-    for github_stack in stacks_to_dissolve:
-        await dissolve_github_stack(github_client=github_client, stack=github_stack)
+    if stacks is not None:
+        for github_stack in stacks_to_dissolve:
+            await dissolve_github_stack(
+                repo=github_client.repo,
+                stacks=stacks,
+                stack=github_stack,
+            )
     # GitHub has no transaction spanning PR branches, pull requests, and stack
     # membership. An external stack edit can race this mutation, and submit accepts that
     # narrow window rather than pretending another non-atomic observation closes it.
@@ -248,10 +259,14 @@ async def publish_prepared(
             orphaned_pr_numbers=orphaned_pr_numbers if overview_body is not None else (),
             pr_numbers=pr_numbers,
         )
-        grouped = await apply_github_stack_plan(
-            github_client=github_client,
-            plan=github_stack_plan,
-            pr_numbers=pr_numbers,
+        grouped = (
+            await apply_github_stack_plan(
+                stacks=stacks,
+                plan=github_stack_plan,
+                pr_numbers=pr_numbers,
+            )
+            if stacks is not None
+            else None
         )
         await sync_revision_history_comments(
             comments_by_pr_number=comments_by_marker[REVISION_HISTORY_COMMENT_MARKER],

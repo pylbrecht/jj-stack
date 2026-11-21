@@ -4,12 +4,12 @@ from __future__ import annotations
 
 import jj_stack.console as console
 import jj_stack.ui as ui
+from jj_stack.forge.github.stack_planning import GithubStackPlan
 from jj_stack.forge.models import PullRequest
 from jj_stack.formatting import format_pr_label, render_commit_blocks, render_commit_lines
 from jj_stack.jj.client import JjClient
 from jj_stack.models.stack import LocalCommit
 
-from .github_stack import GithubStackPlan
 from .models import PRSyncPlan, PublicationInputs
 
 

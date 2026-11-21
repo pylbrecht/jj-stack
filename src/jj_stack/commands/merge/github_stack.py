@@ -12,9 +12,9 @@ from jj_stack.forge.errors import ForgeError
 from jj_stack.forge.github.client import GithubClient
 from jj_stack.forge.github.models import GithubStack, GithubStackMerge
 from jj_stack.forge.github.resolution import GithubRepoAddress
+from jj_stack.forge.github.stack_safety import selected_github_stack
 from jj_stack.forge.models import PullRequest
 from jj_stack.formatting import format_pr_label, format_pr_number
-from jj_stack.stack.github_stack_safety import selected_github_stack
 from jj_stack.ui import Message
 
 from .plan import MergeAction, MergeChange, MergeExecutionInputs, MergePlan, MergeResult

@@ -7,9 +7,8 @@ from collections.abc import Collection, Sequence
 import jj_stack.ui as ui
 from jj_stack.errors import CliError
 from jj_stack.forge.errors import ForgeError
-from jj_stack.forge.github.client import GithubClient
 from jj_stack.forge.github.models import GithubStack
-from jj_stack.forge.github.resolution import GithubRepoAddress
+from jj_stack.forge.protocol import RepoAddress, StackObjects
 from jj_stack.formatting import format_pr_number
 
 
@@ -31,7 +30,7 @@ def require_merged_prefix(stack: GithubStack) -> GithubStack:
 
 
 def selected_github_stack(
-    repo: GithubRepoAddress,
+    repo: RepoAddress,
     selected_pr_numbers: Collection[int],
     stacks: Sequence[GithubStack],
 ) -> GithubStack | None:
@@ -84,13 +83,14 @@ def selected_github_stack(
 
 async def dissolve_github_stack(
     *,
-    github_client: GithubClient,
+    repo: RepoAddress,
+    stacks: StackObjects,
     stack: GithubStack,
 ) -> None:
     """Dissolve an observed stack and reject an incomplete mutation result."""
 
     try:
-        remaining = await github_client.unstack(stack_number=stack.number)
+        remaining = await stacks.unstack(stack_number=stack.number)
     except ForgeError as error:
         if error.kind == "invalid":
             raise CliError(
@@ -101,7 +101,7 @@ async def dissolve_github_stack(
         raise CliError(t"Could not remove GitHub stack #{stack.number}.") from error
     if remaining is not None and remaining.active_pr_numbers:
         members = ui.join(
-            lambda number: format_pr_number(number, repo=github_client.repo),
+            lambda number: format_pr_number(number, repo=repo),
             remaining.active_pr_numbers,
         )
         raise CliError(

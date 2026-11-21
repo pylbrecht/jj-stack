@@ -43,7 +43,8 @@ describe current behavior and rationale; commit history records how the design c
 - [jj/client.py](../../src/jj_stack/jj/client.py) provides jj queries and mutations.
   [forge/protocol.py](../../src/jj_stack/forge/protocol.py) lists the requests that commands
   make of a forge, and [forge/github/client.py](../../src/jj_stack/forge/github/client.py)
-  implements them for GitHub.
+  implements them for GitHub. `Forge.stacks` is `None` on a forge without GitHub stacks, and
+  stack observation then reports empty stack membership.
   [state/store.py](../../src/jj_stack/state/store.py) reads and writes tracking data.
 - [timing.py](../../src/jj_stack/timing.py) records the per-call durations that `--time-output`
   reports. Start a performance investigation by running the slow command with that flag.

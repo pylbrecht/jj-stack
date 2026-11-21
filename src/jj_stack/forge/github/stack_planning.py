@@ -7,11 +7,10 @@ from typing import Literal
 import jj_stack.ui as ui
 from jj_stack.errors import CliError
 from jj_stack.forge.errors import ForgeError
-from jj_stack.forge.github.client import GithubClient
 from jj_stack.forge.github.models import GithubStack, GithubStackPR
-from jj_stack.forge.github.resolution import GithubRepoAddress
+from jj_stack.forge.github.stack_safety import require_merged_prefix
+from jj_stack.forge.protocol import RepoAddress, StackObjects
 from jj_stack.formatting import format_pr_label
-from jj_stack.stack.github_stack_safety import require_merged_prefix
 
 type GithubStackPRSnapshot = tuple[int, str, str]
 
@@ -32,7 +31,7 @@ def plan_github_stack(
     observed_stacks: Sequence[GithubStack],
     orphaned_pr_snapshots: Set[GithubStackPRSnapshot],
     pr_numbers_requiring_base_update: Set[int],
-    repo: GithubRepoAddress,
+    repo: RepoAddress,
 ) -> GithubStackPlan:
     known_desired = tuple(number for number in desired if number is not None)
     if len(set(known_desired)) != len(known_desired):
@@ -102,7 +101,7 @@ def plan_github_stack(
 
 async def apply_github_stack_plan(
     *,
-    github_client: GithubClient,
+    stacks: StackObjects,
     plan: GithubStackPlan,
     pr_numbers: tuple[int, ...],
 ) -> GithubStack | None:
@@ -111,12 +110,12 @@ async def apply_github_stack_plan(
     try:
         if plan.action == "append":
             stack = plan.affected_stacks[0]
-            return await github_client.append_to_stack(
+            return await stacks.append_to_stack(
                 stack_number=stack.number,
                 pr_numbers=pr_numbers[len(stack.active_pr_numbers) :],
             )
         if plan.creates_stack(len(pr_numbers)):
-            return await github_client.create_stack(pr_numbers=pr_numbers)
+            return await stacks.create_stack(pr_numbers=pr_numbers)
     except ForgeError as error:
         # GitHub names the pull request in its 422; retrying cannot clear this one.
         hint = (
