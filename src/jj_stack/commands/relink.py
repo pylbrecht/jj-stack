@@ -31,14 +31,18 @@ import jj_stack.console as console
 import jj_stack.ui as ui
 from jj_stack.bootstrap import CommandContext, GlobalOptions, bootstrap_context
 from jj_stack.errors import CliError
-from jj_stack.formatting import format_pr_label, format_pr_number
-from jj_stack.github.client import GithubClient
-from jj_stack.github.pr_refs import load_pr, parse_repo_pr_reference, require_managed_pr_head
-from jj_stack.github.resolution import (
+from jj_stack.forge.github.client import GithubClient
+from jj_stack.forge.github.pr_refs import (
+    load_pr,
+    parse_repo_pr_reference,
+    require_managed_pr_head,
+)
+from jj_stack.forge.github.resolution import (
     GithubRepoAddress,
     require_github_repo,
     select_submit_remote,
 )
+from jj_stack.formatting import format_pr_label, format_pr_number
 from jj_stack.identifiers import ChangeId, CommitId, short_change_id
 from jj_stack.models.github import GithubPR
 from jj_stack.models.tracking import PRIdentity, SubmittedBaseline, TrackedPR

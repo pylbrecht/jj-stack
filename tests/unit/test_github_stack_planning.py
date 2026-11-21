@@ -5,7 +5,7 @@ import pytest
 from jj_stack.commands.cleanup.actions import plan_github_stack_cleanup
 from jj_stack.commands.submit.github_stack import plan_github_stack
 from jj_stack.errors import CliError, error_hint, error_message
-from jj_stack.github.resolution import GithubRepoAddress
+from jj_stack.forge.github.resolution import GithubRepoAddress
 from jj_stack.models.github import GithubStack
 from jj_stack.ui import plain_text
 

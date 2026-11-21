@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from jj_stack.github.client import GithubClient
+from jj_stack.forge.github.client import GithubClient
 from jj_stack.state.store import TrackingStore
 
 from ..support.fake_github import create_app

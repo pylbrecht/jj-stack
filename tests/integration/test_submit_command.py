@@ -16,8 +16,8 @@ from jj_stack.errors import (
     EXIT_NO_STACK,
     EXIT_USAGE,
 )
-from jj_stack.github.client import GithubClient, GithubClientError
-from jj_stack.github.overview_comments import STACK_OVERVIEW_COMMENT_MARKER
+from jj_stack.forge.github.client import GithubClient, GithubClientError
+from jj_stack.forge.github.overview_comments import STACK_OVERVIEW_COMMENT_MARKER
 from jj_stack.jj.client import JjClient
 from jj_stack.state.operation_lock import try_acquire_operation_lock
 from jj_stack.state.store import TrackingStore, resolve_state_path

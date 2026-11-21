@@ -8,7 +8,7 @@ import pytest
 
 import jj_stack.commands.sync_apply as sync_apply
 from jj_stack.errors import EXIT_GITHUB, EXIT_INCOMPLETE, CliError
-from jj_stack.github.client import GithubClient, GithubClientError
+from jj_stack.forge.github.client import GithubClient, GithubClientError
 from jj_stack.identifiers import short_change_id, short_commit_id
 from jj_stack.jj.client import JjClient
 from jj_stack.state.store import TrackingStore

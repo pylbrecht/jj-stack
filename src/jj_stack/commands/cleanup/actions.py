@@ -8,12 +8,12 @@ from dataclasses import dataclass
 import jj_stack.ui as ui
 from jj_stack.console import ActionStatus
 from jj_stack.errors import CliError
-from jj_stack.formatting import format_pr_label
-from jj_stack.github.client import PR_PAGE_SIZE, GithubClient, GithubClientError
-from jj_stack.github.overview_comments import (
+from jj_stack.forge.github.client import PR_PAGE_SIZE, GithubClient, GithubClientError
+from jj_stack.forge.github.overview_comments import (
     STACK_OVERVIEW_COMMENT_LABEL,
     delete_stack_overview_comment,
 )
+from jj_stack.formatting import format_pr_label
 from jj_stack.jj.client import JjClient, PRRefUpdate
 from jj_stack.models.github import GithubIssueComment, GithubPR, GithubStack
 from jj_stack.stack.change_state import (

@@ -8,9 +8,9 @@ from typing import Literal
 import jj_stack.ui as ui
 from jj_stack.config import MergeMethod
 from jj_stack.errors import CliError
+from jj_stack.forge.github.client import GithubClient, GithubClientError
+from jj_stack.forge.github.resolution import GithubRepoAddress
 from jj_stack.formatting import format_pr_label, format_pr_number
-from jj_stack.github.client import GithubClient, GithubClientError
-from jj_stack.github.resolution import GithubRepoAddress
 from jj_stack.models.github import GithubPR, GithubStack, GithubStackMerge
 from jj_stack.stack.github_stack_safety import selected_github_stack
 from jj_stack.ui import Message

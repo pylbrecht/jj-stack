@@ -11,8 +11,8 @@ import pytest
 from jj_stack.bootstrap import CommandContext
 from jj_stack.concurrency import wait_for_read_tasks
 from jj_stack.config import AppConfig
-from jj_stack.github.client import GithubClient, GithubClientError
-from jj_stack.github.resolution import GithubRepoAddress
+from jj_stack.forge.github.client import GithubClient, GithubClientError
+from jj_stack.forge.github.resolution import GithubRepoAddress
 from jj_stack.jj.client import JjClient
 from jj_stack.models.tracking import TrackingState
 from jj_stack.stack.pr_facts import observe_prs

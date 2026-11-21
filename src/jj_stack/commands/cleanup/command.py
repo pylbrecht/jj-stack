@@ -47,11 +47,15 @@ from jj_stack.errors import (
     error_hint,
     error_message,
 )
+from jj_stack.forge.github.client import GithubClient, GithubClientError
+from jj_stack.forge.github.error_messages import remote_and_github_unavailable_messages
+from jj_stack.forge.github.overview_comments import STACK_OVERVIEW_COMMENT_MARKER
+from jj_stack.forge.github.resolution import (
+    GithubTarget,
+    UnresolvedGithubTarget,
+    resolve_github_target,
+)
 from jj_stack.formatting import format_pr_label
-from jj_stack.github.client import GithubClient, GithubClientError
-from jj_stack.github.error_messages import remote_and_github_unavailable_messages
-from jj_stack.github.overview_comments import STACK_OVERVIEW_COMMENT_MARKER
-from jj_stack.github.resolution import GithubTarget, UnresolvedGithubTarget, resolve_github_target
 from jj_stack.identifiers import ChangeId, short_change_id
 from jj_stack.jj.client import PRRefUpdate
 from jj_stack.models.git import GitRemote

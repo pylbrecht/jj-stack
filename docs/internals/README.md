@@ -41,7 +41,7 @@ describe current behavior and rationale; commit history records how the design c
   [sync_apply.py](../../src/jj_stack/commands/sync_apply.py) applies local changes, refreshes PRs,
   and runs cleanup.
 - [jj/client.py](../../src/jj_stack/jj/client.py) provides jj queries and mutations;
-  [github/client.py](../../src/jj_stack/github/client.py) handles GitHub requests.
+  [forge/github/client.py](../../src/jj_stack/forge/github/client.py) handles GitHub requests.
   [state/store.py](../../src/jj_stack/state/store.py) reads and writes tracking data.
 - [timing.py](../../src/jj_stack/timing.py) records the per-call durations that `--time-output`
   reports. Start a performance investigation by running the slow command with that flag.

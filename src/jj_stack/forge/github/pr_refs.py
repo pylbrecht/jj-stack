@@ -7,9 +7,9 @@ from urllib.parse import urlparse
 
 import jj_stack.ui as ui
 from jj_stack.errors import CliError, UsageError
+from jj_stack.forge.github.client import GithubClient, GithubClientError
+from jj_stack.forge.github.resolution import GithubRepoAddress
 from jj_stack.formatting import format_pr_number
-from jj_stack.github.client import GithubClient, GithubClientError
-from jj_stack.github.resolution import GithubRepoAddress
 from jj_stack.identifiers import CommitId
 from jj_stack.models.github import GithubPR
 from jj_stack.pr_branch_namespace import current_pr_branch_namespace

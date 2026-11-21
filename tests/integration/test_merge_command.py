@@ -9,8 +9,8 @@ from jj_stack.commands.merge import command as merge_command
 from jj_stack.commands.merge.checks import ChecksPending
 from jj_stack.commands.merge.github_stack import PendingMerge
 from jj_stack.errors import EXIT_GITHUB, CliError
-from jj_stack.github.client import GithubClient, GithubClientError
-from jj_stack.github.overview_comments import STACK_OVERVIEW_COMMENT_MARKER
+from jj_stack.forge.github.client import GithubClient, GithubClientError
+from jj_stack.forge.github.overview_comments import STACK_OVERVIEW_COMMENT_MARKER
 from jj_stack.jj.client import JjClient
 from jj_stack.state.operation_lock import try_acquire_operation_lock
 from jj_stack.state.store import TrackingStore

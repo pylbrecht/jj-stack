@@ -5,8 +5,8 @@ from __future__ import annotations
 import jj_stack.ui as ui
 from jj_stack.concurrency import run_bounded_tasks
 from jj_stack.errors import CliError
+from jj_stack.forge.github.client import GithubClient, GithubClientError
 from jj_stack.formatting import format_pr_label
-from jj_stack.github.client import GithubClient, GithubClientError
 from jj_stack.identifiers import CommitId
 from jj_stack.jj.client import JjClient
 from jj_stack.models.github import GithubPR

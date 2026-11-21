@@ -11,7 +11,7 @@ from jj_stack.errors import (
     error_message,
     resolve_exit_code,
 )
-from jj_stack.github.client import GithubClientError
+from jj_stack.forge.github.client import GithubClientError
 from jj_stack.ui import plain_text
 
 

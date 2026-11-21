@@ -7,12 +7,12 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Literal
 
-import jj_stack.github.resolution as github_resolution
+import jj_stack.forge.github.resolution as github_resolution
 from jj_stack.bootstrap import CommandContext
 from jj_stack.concurrency import wait_for_read_tasks
 from jj_stack.errors import CliError
-from jj_stack.github.client import GithubClient, GithubClientError
-from jj_stack.github.stack_availability import github_stacks_unavailable_error
+from jj_stack.forge.github.client import GithubClient, GithubClientError
+from jj_stack.forge.github.stack_availability import github_stacks_unavailable_error
 from jj_stack.identifiers import ChangeId, CommitId
 from jj_stack.models.github import GithubPR, GithubRepo, GithubStack
 from jj_stack.models.tracking import TrackingState

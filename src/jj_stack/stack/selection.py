@@ -5,13 +5,13 @@ from __future__ import annotations
 import jj_stack.ui as ui
 from jj_stack.bootstrap import CommandContext
 from jj_stack.errors import AmbiguousSelectionError, CliError, UsageError
-from jj_stack.formatting import format_pr_label
-from jj_stack.github import resolution
-from jj_stack.github.pr_refs import (
+from jj_stack.forge.github import resolution
+from jj_stack.forge.github.pr_refs import (
     parse_pr_number,
     parse_repo_pr_reference,
 )
-from jj_stack.github.resolution import GithubRepoAddress, select_submit_remote
+from jj_stack.forge.github.resolution import GithubRepoAddress, select_submit_remote
+from jj_stack.formatting import format_pr_label
 from jj_stack.identifiers import ChangeId
 from jj_stack.jj.client import JjClient
 

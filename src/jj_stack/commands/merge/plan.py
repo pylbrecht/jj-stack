@@ -6,8 +6,8 @@ from dataclasses import dataclass, replace
 from typing import Literal
 
 import jj_stack.ui as ui
+from jj_stack.forge.github.resolution import GithubRepoAddress
 from jj_stack.formatting import format_pr_number
-from jj_stack.github.resolution import GithubRepoAddress
 from jj_stack.identifiers import ChangeId, CommitId, short_change_id
 from jj_stack.models.stack import LocalCommit
 from jj_stack.models.tracking import PRIdentity

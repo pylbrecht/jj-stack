@@ -5,7 +5,7 @@ import pytest
 from jj_stack.commands.merge.command import _resolve_merge_method
 from jj_stack.commands.merge.plan import MergeChange, merge_precondition_error
 from jj_stack.errors import CliError
-from jj_stack.github.resolution import GithubRepoAddress
+from jj_stack.forge.github.resolution import GithubRepoAddress
 from jj_stack.models.git import GitRemote
 from jj_stack.models.github import GithubBranchRef, GithubPR, GithubPRHead, GithubRepo
 from jj_stack.models.tracking import PRIdentity, SubmittedBaseline, TrackedPR

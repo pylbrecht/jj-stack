@@ -20,8 +20,8 @@ from pydantic import AliasPath, BaseModel, ConfigDict, Field, TypeAdapter, Valid
 from jj_stack.concurrency import DEFAULT_BOUNDED_CONCURRENCY, wait_for_read_tasks
 from jj_stack.config import MergeMethod
 from jj_stack.errors import EXIT_GITHUB, SummarizedError
-from jj_stack.github.auth import github_token
-from jj_stack.github.resolution import GithubRepoAddress
+from jj_stack.forge.github.auth import github_token
+from jj_stack.forge.github.resolution import GithubRepoAddress
 from jj_stack.identifiers import CommitId
 from jj_stack.models.github import (
     DEFAULT_PR_TEMPLATE_PATHS,

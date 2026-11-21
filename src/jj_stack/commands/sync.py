@@ -48,10 +48,10 @@ from jj_stack.errors import (
     error_message,
     resolve_exit_code,
 )
+from jj_stack.forge.github.client import GithubClientError
+from jj_stack.forge.github.error_messages import require_github_target
+from jj_stack.forge.github.resolution import resolve_github_target
 from jj_stack.formatting import format_pr_label
-from jj_stack.github.client import GithubClientError
-from jj_stack.github.error_messages import require_github_target
-from jj_stack.github.resolution import resolve_github_target
 from jj_stack.identifiers import ChangeId, CommitId, is_change_id_prefix, short_change_id
 from jj_stack.jj.client import quote_revset_symbol
 from jj_stack.stack.change_state import UNOBSERVED
