@@ -51,6 +51,7 @@ class CheckResult:
 # The checks that need the GitHub API, in report order. The later ones are skipped when the
 # repo cannot be reached.
 _GITHUB_CHECKS = ("connectivity", "push access", "GitHub stacks", "trunk branch")
+_GITHUB_LABELS = ("GitHub remote", "GitHub auth", *_GITHUB_CHECKS)
 
 
 def doctor(
@@ -89,9 +90,7 @@ async def _run_checks(
                 "PR branch fetch",
                 "PR bookmarks",
                 "checkout/sync leftovers",
-                "GitHub remote",
-                "GitHub auth",
-                *_GITHUB_CHECKS,
+                *_GITHUB_LABELS,
             )
         )
         return results
@@ -101,8 +100,17 @@ async def _run_checks(
     )
     results.append(_check_pr_bookmarks(context=context, fix=fix))
     results.append(_check_pr_branch_temp(context=context, fix=fix))
+    results.extend(await _run_github_checks(context=context, remote=selected_remote))
+    return results
 
-    github_result, parsed_repo = _check_github_remote(selected_remote)
+
+async def _run_github_checks(
+    *,
+    context: CommandContext,
+    remote: GitRemote,
+) -> list[CheckResult]:
+    results: list[CheckResult] = []
+    github_result, parsed_repo = _check_github_remote(remote)
     results.append(github_result)
 
     if parsed_repo is None:
