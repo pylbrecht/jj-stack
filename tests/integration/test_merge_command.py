@@ -6,12 +6,12 @@ from pathlib import Path
 import pytest
 
 from jj_stack.commands.merge import command as merge_command
-from jj_stack.commands.merge.checks import ChecksPending
 from jj_stack.errors import EXIT_FORGE, CliError
 from jj_stack.forge.errors import ForgeError
 from jj_stack.forge.github.client import GithubClient
 from jj_stack.forge.github.overview_comments import STACK_OVERVIEW_COMMENT_MARKER
 from jj_stack.forge.github.stack_merge import PendingMerge
+from jj_stack.forge.merge import ChecksPending
 from jj_stack.jj.client import JjClient
 from jj_stack.state.operation_lock import try_acquire_operation_lock
 from jj_stack.state.store import TrackingStore
@@ -611,8 +611,8 @@ def test_merge_update_waits_while_github_reports_an_old_head_for_a_rewritten_bra
     converge = merge_command.converge_selected_stack
     attempts: list[str] = []
 
-    async def merge_then_lag(self, github):
-        result = await wait(self, github)
+    async def merge_then_lag(self):
+        result = await wait(self)
         fake_repo.prs[2].lagging_head = stack.head.commit_id
         return result
 
@@ -658,8 +658,8 @@ def test_merge_finishes_when_another_sync_already_cleaned_up_the_stack(
     sync_exit_codes: list[int] = []
 
     # Another terminal syncs as soon as GitHub reports the merge, before merge's own update.
-    async def wait_then_sync_elsewhere(self, github):
-        result = await wait(self, github)
+    async def wait_then_sync_elsewhere(self):
+        result = await wait(self)
         sync_exit_codes.append(
             await asyncio.to_thread(run_main, repo, config_path, "sync", head_change_id)
         )

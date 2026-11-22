@@ -6,8 +6,6 @@ from collections.abc import Iterator
 import httpx2
 import pytest
 
-from jj_stack.commands.merge.checks import _pending_checks
-from jj_stack.commands.merge.plan import MergeChange, MergeExecutionInputs
 from jj_stack.console import configured_console
 from jj_stack.errors import CliError
 from jj_stack.forge.errors import ForgeError
@@ -15,7 +13,9 @@ from jj_stack.forge.github.client import GithubClient
 from jj_stack.forge.github.details import GithubCheck, GithubMergeQueueEntry, latest_checks
 from jj_stack.forge.github.models import GithubPullRequest, GithubStackMerge
 from jj_stack.forge.github.resolution import GithubRepoAddress
+from jj_stack.forge.github.stack_merge_checks import _pending_checks
 from jj_stack.forge.github.stack_merge_wait import wait_for_merge
+from jj_stack.forge.merge import MergeChange, MergeExecutionInputs
 from jj_stack.forge.models import BranchRef, MergeDetails, PRHead
 from jj_stack.identifiers import ChangeId, CommitId
 from jj_stack.models.tracking import PRIdentity

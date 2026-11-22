@@ -12,6 +12,7 @@ from jj_stack.forge.github.models import (
     GithubStackMerge,
     GithubStackMergeSubmission,
 )
+from jj_stack.forge.merge import MergeExecutionInputs, MergePlan, StackMergeRequest
 from jj_stack.forge.models import (
     PRComment,
     PRProgress,
@@ -21,6 +22,7 @@ from jj_stack.forge.models import (
     Repo,
 )
 from jj_stack.identifiers import CommitId
+from jj_stack.models.stack import LocalCommit
 
 
 class RepoAddress(Protocol):
@@ -90,6 +92,22 @@ class StackObjects(Protocol):
         *,
         pr_numbers: Sequence[int],
     ) -> dict[int, GithubPullRequest | None]: ...
+
+    def plan_stack_merge(
+        self,
+        *,
+        plan: MergePlan,
+        github_stacks: tuple[GithubStack, ...],
+        execution: MergeExecutionInputs,
+        changes: Sequence[LocalCommit],
+        repo_state: Repo,
+        uses_merge_queue: bool,
+        configured_method: MergeMethod | None,
+        merge_method: MergeMethod | None,
+        warn_ignored_method: bool,
+    ) -> StackMergeRequest:
+        """Prepare the merge of `plan`'s planned prefix, which lands it in one request."""
+        ...
 
 
 class Forge(Protocol):

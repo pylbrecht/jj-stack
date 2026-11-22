@@ -2,28 +2,37 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass, replace
-from typing import Literal
+from typing import Literal, Protocol
 
+import jj_stack.console as console
 import jj_stack.ui as ui
-from jj_stack.commands.merge.plan import (
+from jj_stack.config import MergeMethod
+from jj_stack.errors import CliError
+from jj_stack.forge.errors import ForgeError
+from jj_stack.forge.github.models import GithubStack, GithubStackMerge
+from jj_stack.forge.github.resolution import GithubRepoAddress
+from jj_stack.forge.github.stack_merge_checks import inspect_required_checks
+from jj_stack.forge.github.stack_merge_wait import wait_for_merge
+from jj_stack.forge.github.stack_safety import selected_github_stack
+from jj_stack.forge.merge import (
+    ChecksPending,
     MergeAction,
     MergeChange,
     MergeExecutionInputs,
     MergePlan,
     MergeResult,
 )
-from jj_stack.config import MergeMethod
-from jj_stack.errors import CliError
-from jj_stack.forge.errors import ForgeError
-from jj_stack.forge.github.models import GithubStack, GithubStackMerge
-from jj_stack.forge.github.resolution import GithubRepoAddress
-from jj_stack.forge.github.stack_merge_wait import wait_for_merge
-from jj_stack.forge.github.stack_safety import selected_github_stack
-from jj_stack.forge.models import PullRequest
+from jj_stack.forge.models import PullRequest, Repo
 from jj_stack.forge.protocol import Forge, StackObjects
 from jj_stack.formatting import format_pr_label, format_pr_number
+from jj_stack.models.stack import LocalCommit
 from jj_stack.ui import Message
+
+
+class _StackForge(Forge, StackObjects, Protocol):
+    """A forge that serves GitHub stacks itself, as `GithubClient` does."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -82,6 +91,12 @@ class PendingMerge:
     merge: AsyncMergePlan
     method: MergeMethod | None  # None means the merge queue
     request: GithubStackMerge
+    stacks: StackObjects
+    status: Literal["pending", "enqueued"]
+
+    @property
+    def pr_number(self) -> int:
+        return self.merge.target.identity.pr_number
 
     def result(self) -> MergeResult:
         """Report the request as still pending."""
@@ -93,11 +108,145 @@ class PendingMerge:
             method=self.method,
         )
 
-    async def wait(self, stacks: StackObjects) -> MergeResult:
+    async def wait(self) -> MergeResult:
         """Wait for GitHub to finish the request, then report its outcome."""
 
-        terminal = await wait_for_merge(stacks, self.request, self.merge.planned, self.execution)
+        terminal = await wait_for_merge(
+            self.stacks,
+            self.request,
+            self.merge.planned,
+            self.execution,
+        )
         return _terminal_result(self.execution, self.merge, terminal, method=self.method)
+
+
+@dataclass(frozen=True, slots=True)
+class GithubStackMergeRequest:
+    """GitHub's merge of the planned stack prefix, through its stack or one ordinary PR."""
+
+    github: _StackForge
+    execution: MergeExecutionInputs
+    merge: AsyncMergePlan
+    method: MergeMethod | None  # None means the merge queue
+
+    def preview(self) -> MergeResult:
+        action = (
+            self.merge.action(
+                method=self.method,
+                repo=self.execution.repo,
+                trunk_branch=self.execution.trunk_branch,
+            )
+            if self.merge.planned
+            else None
+        )
+        return MergeResult(actions=self.merge.actions(action))
+
+    async def submit(
+        self,
+        *,
+        wait_for_checks: bool,
+    ) -> MergeResult | PendingMerge | ChecksPending:
+        prs = tuple(change.pr for change in self.merge.planned)
+        merge, prs = await prepare_merge_request(self.github, self.merge, self.execution, prs)
+        if wait_for_checks and merge.planned:
+            waiting = await inspect_required_checks(self.github, merge.planned, prs)
+            if waiting is not None:
+                return waiting
+
+        return await execute_async_merge(
+            execution=self.execution,
+            stacks=self.github,
+            method=self.method,
+            merge=merge,
+        )
+
+
+def plan_stack_merge(
+    github: _StackForge,
+    *,
+    plan: MergePlan,
+    github_stacks: tuple[GithubStack, ...],
+    execution: MergeExecutionInputs,
+    changes: Sequence[LocalCommit],
+    repo_state: Repo,
+    uses_merge_queue: bool,
+    configured_method: MergeMethod | None,
+    merge_method: MergeMethod | None,
+    warn_ignored_method: bool,
+) -> GithubStackMergeRequest:
+    """Choose the merge method and check the GitHub stack before any merge request."""
+
+    if uses_merge_queue:
+        method = None
+    else:
+        method = resolve_merge_method(
+            changes=changes,
+            configured=configured_method,
+            merge_method=merge_method,
+            repo_state=repo_state,
+        )
+    merge = build_async_merge_plan(plan, github_stacks, execution)
+    if uses_merge_queue and merge_method is not None and warn_ignored_method:
+        console.warning(
+            t"The base branch {ui.bookmark(execution.trunk_branch)} uses a merge queue; "
+            t"ignoring {ui.cmd('--method')}."
+        )
+    return GithubStackMergeRequest(
+        github=github,
+        execution=execution,
+        merge=merge,
+        method=method,
+    )
+
+
+def resolve_merge_method(
+    *,
+    changes: Sequence[LocalCommit],
+    configured: MergeMethod | None,
+    merge_method: MergeMethod | None,
+    repo_state: Repo,
+) -> MergeMethod:
+    """Honor explicit choices; require one for signed stacks with several allowed methods."""
+
+    settings: dict[MergeMethod, bool | None] = {
+        "rebase": repo_state.allow_rebase_merge,
+        "squash": repo_state.allow_squash_merge,
+        "merge": repo_state.allow_merge_commit,
+    }
+    chosen = merge_method or configured
+    if any(allowed is None for allowed in settings.values()):
+        if chosen is not None:
+            return chosen
+        raise CliError(
+            "GitHub did not report which merge methods this repo allows.",
+            hint=t"Pass {ui.cmd('--method')} or set {ui.code('jj-stack.merge_method')}.",
+        )
+    allowed_methods = [method for method, allowed in settings.items() if allowed]
+    if not allowed_methods:
+        raise CliError(
+            "This repo does not allow any pull request merge method.",
+            hint="Fix the repo merge settings on GitHub before merging.",
+        )
+    if chosen is not None:
+        if chosen not in allowed_methods:
+            source = ui.cmd("--method") if merge_method else ui.code("jj-stack.merge_method")
+            raise CliError(
+                t"This repo does not allow {ui.cmd(chosen)} merges; it allows "
+                t"{ui.join(ui.cmd, allowed_methods)}.",
+                hint=t"Change {source} to one it allows, or enable {ui.cmd(chosen)} on GitHub.",
+            )
+        return chosen
+    if len(allowed_methods) == 1:
+        return allowed_methods[0]
+    signed = tuple(change.change_id for change in changes if change.signed)
+    if signed:
+        raise CliError(
+            t"Stack contains signed commits ({ui.join(ui.change_id, signed)}), and this repo "
+            t"allows several merge methods.",
+            hint=t"Merging can discard signatures, so choose a method with {ui.cmd('--method')} "
+            t"or {ui.code('jj-stack.merge_method')}.",
+        )
+    return allowed_methods[0]
 
 
 def build_async_merge_plan(
@@ -194,12 +343,14 @@ async def execute_async_merge(
             "and run jj-stack sync if it merges",
         )
     request = submission.result
-    if request.status in {"pending", "enqueued"}:
+    if request.status == "pending" or request.status == "enqueued":
         return PendingMerge(
             execution=execution,
             merge=merge,
             method=method,
             request=request,
+            stacks=stacks,
+            status=request.status,
         )
     return _terminal_result(execution, merge, request, method=method)
 

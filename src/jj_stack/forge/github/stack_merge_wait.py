@@ -11,7 +11,6 @@ from math import ceil
 
 import jj_stack.console as console
 import jj_stack.ui as ui
-from jj_stack.commands.merge.plan import MergeChange, MergeExecutionInputs
 from jj_stack.errors import CliError
 from jj_stack.forge.errors import ForgeError
 from jj_stack.forge.github.models import (
@@ -19,6 +18,7 @@ from jj_stack.forge.github.models import (
     GithubStackMerge,
     GithubStackMergeDetails,
 )
+from jj_stack.forge.merge import MergeChange, MergeExecutionInputs
 from jj_stack.forge.protocol import StackObjects
 from jj_stack.formatting import format_pr_number
 from jj_stack.identifiers import short_commit_id

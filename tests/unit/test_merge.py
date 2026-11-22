@@ -2,11 +2,12 @@ from __future__ import annotations
 
 import pytest
 
-from jj_stack.commands.merge.command import _resolve_merge_method
-from jj_stack.commands.merge.plan import MergeChange, merge_precondition_error
+from jj_stack.commands.merge.plan import merge_precondition_error
 from jj_stack.errors import CliError
 from jj_stack.forge.github.models import GithubPullRequest
 from jj_stack.forge.github.resolution import GithubRepoAddress
+from jj_stack.forge.github.stack_merge import resolve_merge_method
+from jj_stack.forge.merge import MergeChange
 from jj_stack.forge.models import BranchRef, PRHead, Repo
 from jj_stack.models.git import GitRemote
 from jj_stack.models.tracking import PRIdentity, SubmittedBaseline, TrackedPR
@@ -47,7 +48,7 @@ def test_resolve_merge_method_prefers_rebase_then_squash_then_merge(
     )
 
     assert (
-        _resolve_merge_method(changes=(), configured=None, merge_method=None, repo_state=repo)
+        resolve_merge_method(changes=(), configured=None, merge_method=None, repo_state=repo)
         == expected
     )
 
@@ -63,13 +64,13 @@ def test_a_single_allowed_method_serves_signed_stacks_and_rejects_other_choices(
     ).model_copy(update={"signed": True})
 
     assert (
-        _resolve_merge_method(
+        resolve_merge_method(
             changes=(signed,), configured=None, merge_method=None, repo_state=repo
         )
         == "squash"
     )
     with pytest.raises(CliError, match="does not allow"):
-        _resolve_merge_method(changes=(), configured="rebase", merge_method=None, repo_state=repo)
+        resolve_merge_method(changes=(), configured="rebase", merge_method=None, repo_state=repo)
 
 
 def test_resolve_merge_method_rejects_a_repo_with_no_allowed_method() -> None:
@@ -80,7 +81,7 @@ def test_resolve_merge_method_rejects_a_repo_with_no_allowed_method() -> None:
     )
 
     with pytest.raises(CliError, match="does not allow any pull request merge method"):
-        _resolve_merge_method(changes=(), configured=None, merge_method=None, repo_state=repo)
+        resolve_merge_method(changes=(), configured=None, merge_method=None, repo_state=repo)
 
 
 def test_unreported_merge_methods_require_an_explicit_choice() -> None:
@@ -91,10 +92,10 @@ def test_unreported_merge_methods_require_an_explicit_choice() -> None:
     )
 
     with pytest.raises(CliError, match="did not report which merge methods"):
-        _resolve_merge_method(changes=(), configured=None, merge_method=None, repo_state=repo)
+        resolve_merge_method(changes=(), configured=None, merge_method=None, repo_state=repo)
 
     assert (
-        _resolve_merge_method(changes=(), configured="squash", merge_method=None, repo_state=repo)
+        resolve_merge_method(changes=(), configured="squash", merge_method=None, repo_state=repo)
         == "squash"
     )
 

@@ -31,7 +31,6 @@ Common examples:
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Sequence
 from dataclasses import dataclass
 
 import jj_stack.console as console
@@ -48,19 +47,23 @@ from jj_stack.forge.github.error_messages import (
     read_or_stop,
     require_github_target,
 )
-from jj_stack.forge.github.resolution import GithubTarget, resolve_github_target
-from jj_stack.forge.github.run import GithubRun, ObservedTrunk
-from jj_stack.forge.github.stack_merge import (
-    PendingMerge,
-    build_async_merge_plan,
-    execute_async_merge,
-    prepare_merge_request,
+from jj_stack.forge.github.resolution import (
+    GithubRepoAddress,
+    GithubTarget,
+    resolve_github_target,
 )
-from jj_stack.forge.models import Repo
+from jj_stack.forge.github.run import GithubRun, ObservedTrunk
+from jj_stack.forge.merge import (
+    ChecksPending,
+    MergeChange,
+    MergeExecutionInputs,
+    MergeResult,
+    PendingMerge,
+)
 from jj_stack.forge.protocol import Forge, StackObjects
 from jj_stack.formatting import pr_url
 from jj_stack.identifiers import ChangeId, short_change_id
-from jj_stack.models.stack import LocalCommit, LocalStack
+from jj_stack.models.stack import LocalStack
 from jj_stack.models.tracking import TrackingState
 from jj_stack.stack.pr_facts import observe_github_stacks, observe_prs
 from jj_stack.stack.preparation import prepare_local_stack
@@ -70,8 +73,7 @@ from jj_stack.stack.selection import (
 from jj_stack.stack.trunk import observe_trunk_branch
 from jj_stack.state.operation_lock import OperationLockBusyError, operation_lock
 
-from .checks import ChecksPending, inspect_required_checks
-from .plan import MergeChange, MergeExecutionInputs, MergeResult, build_merge_plan
+from .plan import build_merge_plan
 from .wait import retry_while_github_catches_up
 
 _RERUN_HINT = "Resolve the GitHub error above, then rerun jj-stack merge."
@@ -145,16 +147,20 @@ async def _run_merge(
             github_client=github_client,
             stacks=stacks,
         )
-        if isinstance(outcome, PendingMerge):
+        if not isinstance(outcome, MergeResult):
             _print_merge_result(outcome.result())
-            _report_merge_requested(outcome, head_change_id=prepared_merge.stack.head.change_id)
+            _report_merge_requested(
+                outcome,
+                head_change_id=prepared_merge.stack.head.change_id,
+                repo=target.repo,
+            )
             if options.no_wait:
                 console.output(
                     t"After GitHub finishes merging, run "
                     t"{ui.cmd(f'jj-stack sync {prepared_merge.sync_head}')}.",
                 )
                 return 0
-            result = await outcome.wait(stacks)
+            result = await outcome.wait()
         else:
             result = outcome
         _print_merge_result(result)
@@ -358,15 +364,6 @@ async def _request_merge_async(
     )
     stacks_task = asyncio.create_task(observe_github_stacks(github=github_client))
     await wait_for_read_tasks(queue_task, prs_task, stacks_task)
-    if queue_task.result():
-        method = None
-    else:
-        method = _resolve_merge_method(
-            changes=stack.changes,
-            configured=prepared_merge.context.config.merge_method,
-            merge_method=prepared_merge.options.merge_method,
-            repo_state=github_repo_state,
-        )
     plan = build_merge_plan(
         observation=prs_task.result(),
         repo=github_repo,
@@ -378,110 +375,46 @@ async def _request_merge_async(
             "The selected stack changed while waiting for required checks.",
             hint="Inspect it with jj-stack view, then rerun jj-stack merge.",
         )
-    github_stacks = stacks_task.result()
+
     execution = MergeExecutionInputs(
         repo=github_repo,
         selected_head=short_change_id(prepared_merge.target_change_id or stack.head.change_id),
         sync_head=prepared_merge.sync_head,
         trunk_branch=trunk_branch,
     )
-    async_merge = build_async_merge_plan(plan, github_stacks, execution)
-    if queue_task.result() and prepared_merge.options.merge_method is not None:
-        if expected_changes is None:
-            console.warning(
-                t"The base branch {ui.bookmark(trunk_branch)} uses a merge queue; ignoring "
-                t"{ui.cmd('--method')}."
-            )
-    if prepared_merge.options.dry_run:
-        action = (
-            async_merge.action(
-                method=method,
-                repo=execution.repo,
-                trunk_branch=trunk_branch,
-            )
-            if async_merge.planned
-            else None
-        )
-        return MergeResult(actions=async_merge.actions(action)), trunk
-    prs = tuple(
-        pr
-        for change in async_merge.planned
-        if (pr := prs_task.result().prs[change.change_id].pr) is not None
-    )
-    async_merge, prs = await prepare_merge_request(github_client, async_merge, execution, prs)
-    if wait_for_checks and async_merge.planned:
-        waiting = await inspect_required_checks(github_client, async_merge.planned, prs)
-        if waiting is not None:
-            return waiting, trunk
-    return await execute_async_merge(
+    request = stacks.plan_stack_merge(
+        plan=plan,
+        github_stacks=stacks_task.result(),
         execution=execution,
-        stacks=stacks,
-        method=method,
-        merge=async_merge,
-    ), trunk
+        changes=stack.changes,
+        repo_state=github_repo_state,
+        uses_merge_queue=queue_task.result(),
+        configured_method=prepared_merge.context.config.merge_method,
+        merge_method=prepared_merge.options.merge_method,
+        warn_ignored_method=expected_changes is None,
+    )
+    if prepared_merge.options.dry_run:
+        return request.preview(), trunk
+
+    return await request.submit(wait_for_checks=wait_for_checks), trunk
 
 
-def _resolve_merge_method(
+def _report_merge_requested(
+    pending: PendingMerge,
     *,
-    changes: Sequence[LocalCommit],
-    configured: MergeMethod | None,
-    merge_method: MergeMethod | None,
-    repo_state: Repo,
-) -> MergeMethod:
-    """Honor explicit choices; require one for signed stacks with several allowed methods."""
-
-    settings: dict[MergeMethod, bool | None] = {
-        "rebase": repo_state.allow_rebase_merge,
-        "squash": repo_state.allow_squash_merge,
-        "merge": repo_state.allow_merge_commit,
-    }
-    chosen = merge_method or configured
-    if any(allowed is None for allowed in settings.values()):
-        if chosen is not None:
-            return chosen
-        raise CliError(
-            "GitHub did not report which merge methods this repo allows.",
-            hint=t"Pass {ui.cmd('--method')} or set {ui.code('jj-stack.merge_method')}.",
-        )
-    allowed_methods = [method for method, allowed in settings.items() if allowed]
-    if not allowed_methods:
-        raise CliError(
-            "This repo does not allow any pull request merge method.",
-            hint="Fix the repo merge settings on GitHub before merging.",
-        )
-    if chosen is not None:
-        if chosen not in allowed_methods:
-            source = ui.cmd("--method") if merge_method else ui.code("jj-stack.merge_method")
-            raise CliError(
-                t"This repo does not allow {ui.cmd(chosen)} merges; it allows "
-                t"{ui.join(ui.cmd, allowed_methods)}.",
-                hint=t"Change {source} to one it allows, or enable {ui.cmd(chosen)} on GitHub.",
-            )
-        return chosen
-    if len(allowed_methods) == 1:
-        return allowed_methods[0]
-    signed = tuple(change.change_id for change in changes if change.signed)
-    if signed:
-        raise CliError(
-            t"Stack contains signed commits ({ui.join(ui.change_id, signed)}), and this repo "
-            t"allows several merge methods.",
-            hint=t"Merging can discard signatures, so choose a method with {ui.cmd('--method')} "
-            t"or {ui.code('jj-stack.merge_method')}.",
-        )
-    return allowed_methods[0]
-
-
-def _report_merge_requested(pending: PendingMerge, *, head_change_id: ChangeId) -> None:
+    head_change_id: ChangeId,
+    repo: GithubRepoAddress,
+) -> None:
     # From here, stopping the command no longer stops the merge.
-    pr_number = pending.merge.target.identity.pr_number
+    pr_number = pending.pr_number
     console.jsonl_record(
         {
             "type": "merge_requested",
             "pr": {
                 "number": pr_number,
-                "url": pr_url(pr_number, repo=pending.execution.repo, url=None),
+                "url": pr_url(pr_number, repo=repo, url=None),
             },
-            "state": pending.request.status,
+            "state": pending.status,
             "head_change_id": head_change_id,
         }
     )
