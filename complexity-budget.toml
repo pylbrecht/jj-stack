@@ -31,9 +31,15 @@ governed_c901 = "function"
 [paths]
 production = ["src"]
 tests = ["tests"]
-merge = ["src/jj_stack/commands/merge"]
+merge = [
+  "src/jj_stack/commands/merge",
+  "src/jj_stack/forge/github/stack_merge.py",
+  "src/jj_stack/forge/github/stack_merge_wait.py",
+]
 governed = [
   "src/jj_stack/commands/merge",
+  "src/jj_stack/forge/github/stack_merge.py",
+  "src/jj_stack/forge/github/stack_merge_wait.py",
   "src/jj_stack/commands/sync.py",
   "src/jj_stack/commands/sync_apply.py",
   "src/jj_stack/commands/sync_prs.py",

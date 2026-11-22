@@ -51,6 +51,12 @@ from jj_stack.forge.github.error_messages import (
 )
 from jj_stack.forge.github.resolution import GithubTarget, resolve_github_target
 from jj_stack.forge.github.run import GithubRun, ObservedTrunk
+from jj_stack.forge.github.stack_merge import (
+    PendingMerge,
+    build_async_merge_plan,
+    execute_async_merge,
+    prepare_merge_request,
+)
 from jj_stack.forge.models import Repo
 from jj_stack.formatting import pr_url
 from jj_stack.identifiers import ChangeId, short_change_id
@@ -65,12 +71,6 @@ from jj_stack.stack.trunk import observe_trunk_branch
 from jj_stack.state.operation_lock import OperationLockBusyError, operation_lock
 
 from .checks import ChecksPending, inspect_required_checks
-from .github_stack import (
-    PendingMerge,
-    build_async_merge_plan,
-    execute_async_merge,
-    prepare_merge_request,
-)
 from .plan import MergeChange, MergeExecutionInputs, MergeResult, build_merge_plan
 from .wait import retry_while_github_catches_up
 
@@ -372,7 +372,7 @@ async def _request_merge_async(
         )
     stacks = stacks_task.result()
     execution = MergeExecutionInputs(
-        repo=github_client.repo,
+        repo=github_repo,
         selected_head=short_change_id(prepared_merge.target_change_id or stack.head.change_id),
         sync_head=prepared_merge.sync_head,
         trunk_branch=trunk_branch,
@@ -407,7 +407,7 @@ async def _request_merge_async(
             return waiting, trunk
     return await execute_async_merge(
         execution=execution,
-        github=github_client,
+        stacks=github_client,
         method=method,
         merge=async_merge,
     ), trunk

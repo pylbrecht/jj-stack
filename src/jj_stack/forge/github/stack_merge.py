@@ -6,19 +6,24 @@ from dataclasses import dataclass, replace
 from typing import Literal
 
 import jj_stack.ui as ui
+from jj_stack.commands.merge.plan import (
+    MergeAction,
+    MergeChange,
+    MergeExecutionInputs,
+    MergePlan,
+    MergeResult,
+)
 from jj_stack.config import MergeMethod
 from jj_stack.errors import CliError
 from jj_stack.forge.errors import ForgeError
-from jj_stack.forge.github.client import GithubClient
 from jj_stack.forge.github.models import GithubStack, GithubStackMerge
 from jj_stack.forge.github.resolution import GithubRepoAddress
+from jj_stack.forge.github.stack_merge_wait import wait_for_merge
 from jj_stack.forge.github.stack_safety import selected_github_stack
 from jj_stack.forge.models import PullRequest
+from jj_stack.forge.protocol import Forge, StackObjects
 from jj_stack.formatting import format_pr_label, format_pr_number
 from jj_stack.ui import Message
-
-from .plan import MergeAction, MergeChange, MergeExecutionInputs, MergePlan, MergeResult
-from .wait import wait_for_merge
 
 
 @dataclass(frozen=True, slots=True)
@@ -88,10 +93,10 @@ class PendingMerge:
             method=self.method,
         )
 
-    async def wait(self, github: GithubClient) -> MergeResult:
+    async def wait(self, stacks: StackObjects) -> MergeResult:
         """Wait for GitHub to finish the request, then report its outcome."""
 
-        terminal = await wait_for_merge(github, self.request, self.merge.planned, self.execution)
+        terminal = await wait_for_merge(stacks, self.request, self.merge.planned, self.execution)
         return _terminal_result(self.execution, self.merge, terminal, method=self.method)
 
 
@@ -123,7 +128,7 @@ def build_async_merge_plan(
 
 
 async def prepare_merge_request(
-    github: GithubClient,
+    github: Forge,
     merge: AsyncMergePlan,
     execution: MergeExecutionInputs,
     prs: tuple[PullRequest, ...],
@@ -148,7 +153,7 @@ async def prepare_merge_request(
 async def execute_async_merge(
     *,
     execution: MergeExecutionInputs,
-    github: GithubClient,
+    stacks: StackObjects,
     method: MergeMethod | None,
     merge: AsyncMergePlan,
 ) -> MergeResult | PendingMerge:
@@ -156,9 +161,9 @@ async def execute_async_merge(
 
     if not merge.planned:
         return MergeResult(actions=merge.actions())
-    pr_label = format_pr_label(merge.target.identity.pr_number, repo=github.repo)
+    pr_label = format_pr_label(merge.target.identity.pr_number, repo=execution.repo)
     try:
-        submission = await github.submit_stack_merge(
+        submission = await stacks.submit_stack_merge(
             expected_head_sha=merge.target.commit_id,
             method=method,
             pr_number=merge.target.identity.pr_number,

@@ -8,9 +8,9 @@ from dataclasses import dataclass
 import jj_stack.console as console
 import jj_stack.ui as ui
 from jj_stack.errors import CliError
-from jj_stack.forge.github.client import GithubClient
 from jj_stack.forge.github.error_messages import read_or_stop
 from jj_stack.forge.models import Check, MergeDetails, PullRequest
+from jj_stack.forge.protocol import Forge
 from jj_stack.formatting import format_pr_number
 
 from .plan import MergeChange
@@ -41,7 +41,7 @@ class ChecksPending:
 
 
 async def inspect_required_checks(
-    github: GithubClient, changes: tuple[MergeChange, ...], prs: tuple[PullRequest, ...]
+    github: Forge, changes: tuple[MergeChange, ...], prs: tuple[PullRequest, ...]
 ) -> ChecksPending | None:
     # Once queued, GitHub tests temporary merge-group commits and owns the queue decision.
     unqueued = tuple(pr for pr in prs if not pr.queued)
