@@ -1,21 +1,17 @@
-"""Helpers for parsing GitHub pull request numbers and URLs."""
+"""Load pull requests by reference, and check that their heads belong to this repo."""
 
 from __future__ import annotations
 
-import re
 from urllib.parse import urlparse
 
 import jj_stack.ui as ui
 from jj_stack.errors import CliError, UsageError
 from jj_stack.forge.errors import ForgeError
-from jj_stack.forge.github.resolution import GithubRepoAddress
 from jj_stack.forge.models import PullRequest
-from jj_stack.forge.protocol import Forge
+from jj_stack.forge.protocol import Forge, RepoAddress
 from jj_stack.formatting import format_pr_number
 from jj_stack.identifiers import CommitId
 from jj_stack.pr_branch_namespace import current_pr_branch_namespace
-
-_PR_URL_RE = re.compile(r"^/(?P<owner>[^/]+)/(?P<repo>[^/]+)/pull/(?P<number>[0-9]+)/?$")
 
 
 async def load_pr(*, github_client: Forge, pr_number: int) -> PullRequest:
@@ -26,11 +22,11 @@ async def load_pr(*, github_client: Forge, pr_number: int) -> PullRequest:
         raise CliError(t"Could not load pull request {pr_label}") from error
 
 
-def pr_head_repo_problem(pr: PullRequest, repo: GithubRepoAddress) -> ui.Message | None:
+def pr_head_repo_problem(pr: PullRequest, repo: RepoAddress) -> ui.Message | None:
     """Explain why a PR's head branch does not belong to the selected repo."""
 
     pr_number_label = format_pr_number(pr.number, url=pr.html_url)
-    if pr.head.label != f"{repo.owner}:{pr.head.ref}":
+    if pr.head.label != repo.head_label(pr.head.ref):
         return (
             t"Pull request {pr_number_label}'s head branch "
             t"{ui.bookmark(pr.head.label or pr.head.ref)} does not belong to {repo.full_name}."
@@ -38,7 +34,7 @@ def pr_head_repo_problem(pr: PullRequest, repo: GithubRepoAddress) -> ui.Message
     return None
 
 
-def managed_pr_head_problem(pr: PullRequest, repo: GithubRepoAddress) -> ui.Message | None:
+def managed_pr_head_problem(pr: PullRequest, repo: RepoAddress) -> ui.Message | None:
     """Explain why a PR's head is not owned by this repo and branch namespace, if it is not."""
 
     if (problem := pr_head_repo_problem(pr, repo)) is not None:
@@ -54,7 +50,7 @@ def managed_pr_head_problem(pr: PullRequest, repo: GithubRepoAddress) -> ui.Mess
     return None
 
 
-def require_managed_pr_head(*, pr: PullRequest, repo: GithubRepoAddress) -> CommitId:
+def require_managed_pr_head(*, pr: PullRequest, repo: RepoAddress) -> CommitId:
     """Return the head commit of a PR owned by this repo and branch namespace."""
 
     if (problem := managed_pr_head_problem(pr, repo)) is not None:
@@ -70,7 +66,7 @@ def parse_pr_number(reference: str) -> int | None:
 
 def parse_repo_pr_reference(
     *,
-    github_repo: GithubRepoAddress,
+    repo: RepoAddress,
     reference: str,
 ) -> int:
     parsed = parse_pr_number(reference)
@@ -78,19 +74,19 @@ def parse_repo_pr_reference(
         return parsed
 
     url = urlparse(reference)
-    match = (
-        _PR_URL_RE.fullmatch(url.path)
+    parsed_url = (
+        repo.parse_pr_url_path(url.path)
         if url.scheme in {"http", "https"} and url.hostname
         else None
     )
-    if match is None:
+    if parsed_url is None:
         raise UsageError(
             f"Pull request reference {reference} is not a pull request number "
-            f"or URL for {github_repo.full_name}."
+            f"or URL for {repo.full_name}."
         )
-    if (match["owner"], match["repo"]) != (github_repo.owner, github_repo.repo):
+    repo_name, number = parsed_url
+    if repo_name != repo.full_name:
         raise UsageError(
-            f"Pull request URL {reference} does not match configured repo "
-            f"{github_repo.full_name}."
+            f"Pull request URL {reference} does not match configured repo {repo.full_name}."
         )
-    return int(match["number"])
+    return number

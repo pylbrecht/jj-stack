@@ -6,11 +6,12 @@ import jj_stack.ui as ui
 from jj_stack.bootstrap import CommandContext
 from jj_stack.errors import AmbiguousSelectionError, CliError, UsageError
 from jj_stack.forge.github import resolution
-from jj_stack.forge.github.pr_refs import (
+from jj_stack.forge.pr_refs import (
     parse_pr_number,
     parse_repo_pr_reference,
 )
-from jj_stack.forge.github.resolution import GithubRepoAddress, select_submit_remote
+from jj_stack.forge.protocol import RepoAddress
+from jj_stack.forge.target import select_submit_remote
 from jj_stack.formatting import format_pr_label
 from jj_stack.identifiers import ChangeId
 from jj_stack.jj.client import JjClient
@@ -67,7 +68,7 @@ def resolve_pr_reference(
     *,
     jj_client: JjClient,
     pr_reference: str,
-) -> tuple[int, GithubRepoAddress | None]:
+) -> tuple[int, RepoAddress | None]:
     """Resolve a pull-request selector and its repo when one is available."""
 
     pr_number = parse_pr_number(pr_reference)
@@ -91,4 +92,4 @@ def resolve_pr_reference(
             t"use a pull request number or fix the selected remote."
         )
 
-    return parse_repo_pr_reference(reference=pr_reference, github_repo=github_repo), github_repo
+    return parse_repo_pr_reference(reference=pr_reference, repo=github_repo), github_repo

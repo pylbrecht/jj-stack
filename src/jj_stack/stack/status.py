@@ -12,12 +12,10 @@ from jj_stack.bootstrap import CommandContext
 from jj_stack.concurrency import wait_for_read_tasks
 from jj_stack.errors import CliError, ErrorMessage, error_message
 from jj_stack.forge.errors import ForgeError
-from jj_stack.forge.github.resolution import (
-    GithubRepoAddress,
-    GithubTarget,
-)
+from jj_stack.forge.github.resolution import GithubRepoAddress
 from jj_stack.forge.models import PRProgress, PullRequest
-from jj_stack.forge.protocol import Forge
+from jj_stack.forge.protocol import Forge, RepoAddress
+from jj_stack.forge.target import ForgeTarget
 from jj_stack.identifiers import ChangeId, CommitId
 from jj_stack.models.git import GitRemote
 from jj_stack.models.stack import LocalCommit
@@ -74,7 +72,7 @@ class StatusResult:
     """Status result for one selected local stack."""
 
     github_error: ErrorMessage | None
-    github_repo: GithubRepoAddress | None
+    github_repo: RepoAddress | None
     incomplete: bool
     remote: GitRemote | None
     remote_error: ErrorMessage | None
@@ -93,7 +91,7 @@ def observe_status(
     if not prepared:
         return {}
     target = prepared[0].github_target
-    if not isinstance(target, GithubTarget):
+    if not isinstance(target, ForgeTarget):
         return {}
     observations: dict[str, ChangeObservation] = {}
     for stack in prepared:
@@ -125,8 +123,8 @@ def build_status_result(
     """Classify one local stack using the shared GitHub observation."""
 
     target = prepared.github_target
-    github_repo = target.repo if isinstance(target, GithubTarget) else None
-    github_error = target.github_repo_error
+    github_repo = target.repo if isinstance(target, ForgeTarget) else None
+    github_error = target.repo_error
     if isinstance(pr_lookups, CliError) and any(
         change.change_id in prepared.state.prs for change in prepared.stack.changes
     ):

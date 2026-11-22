@@ -40,19 +40,16 @@ from jj_stack.errors import CliError, UsageError
 from jj_stack.forge.errors import ForgeError
 from jj_stack.forge.github.error_messages import observe_github_repo
 from jj_stack.forge.github.models import GithubStack
-from jj_stack.forge.github.pr_refs import (
+from jj_stack.forge.github.resolution import require_github_repo
+from jj_stack.forge.models import PullRequest
+from jj_stack.forge.pr_refs import (
     load_pr,
     managed_pr_head_problem,
     parse_repo_pr_reference,
     require_managed_pr_head,
 )
-from jj_stack.forge.github.resolution import (
-    GithubRepoAddress,
-    require_github_repo,
-    select_submit_remote,
-)
-from jj_stack.forge.models import PullRequest
-from jj_stack.forge.protocol import Forge
+from jj_stack.forge.protocol import Forge, RepoAddress
+from jj_stack.forge.target import select_submit_remote
 from jj_stack.formatting import format_pr_label
 from jj_stack.identifiers import ChangeId, CommitId, short_change_id
 from jj_stack.jj.client import JjClient
@@ -198,14 +195,14 @@ async def _checkout_pr_stack(
     context: CommandContext,
     github_client: Forge,
     remote: GitRemote,
-    repo: GithubRepoAddress,
+    repo: RepoAddress,
     pr_reference: str,
 ) -> CheckoutResult:
     client = context.jj_client
     state = context.state_store.load()
     pr_number = parse_repo_pr_reference(
         reference=pr_reference,
-        github_repo=repo,
+        repo=repo,
     )
     top_pr = await load_pr(
         github_client=github_client,
@@ -333,7 +330,7 @@ def _describe_added_commit(client: JjClient, remote: str, commit: LocalCommit) -
 async def _load_pr_chain(
     *,
     github_client: Forge,
-    repo: GithubRepoAddress,
+    repo: RepoAddress,
     top: PullRequest,
 ) -> tuple[PullRequest, ...]:
     """Follow PR base branches from the selected PR to trunk."""
@@ -443,7 +440,7 @@ async def _pick_stack(
     context: CommandContext,
     *,
     github_client: Forge,
-    repo: GithubRepoAddress,
+    repo: RepoAddress,
 ) -> CheckoutPickerChoice:
     """Prompt for one local or GitHub stack without holding the operation lock."""
 
@@ -517,7 +514,7 @@ def _picker_choices(
     github_stacks: tuple[GithubStack, ...],
     local_stacks: list[LocalStack],
     prs: dict[int, PullRequest | None],
-    repo: GithubRepoAddress,
+    repo: RepoAddress,
     state: TrackingState,
     visible_commit_ids: set[CommitId],
 ) -> tuple[CheckoutPickerChoice, ...]:

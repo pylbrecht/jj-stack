@@ -3,34 +3,27 @@
 from __future__ import annotations
 
 import sys
-from typing import Protocol
 
 import jj_stack.ui as ui
 from jj_stack.console import color_when
+from jj_stack.forge.protocol import RepoAddress
 from jj_stack.identifiers import CommitId
 from jj_stack.jj.client import JjClient, RenderableCommit
-
-
-class GithubRepoRenderTarget(Protocol):
-    """GitHub repo coordinates needed to render a pull request URL."""
-
-    @property
-    def full_name(self) -> str: ...
 
 
 def pr_url(
     pr_number: int,
     *,
-    repo: GithubRepoRenderTarget | None,
+    repo: RepoAddress | None,
     url: str | None,
 ) -> str | None:
-    return url or (f"https://github.com/{repo.full_name}/pull/{pr_number}" if repo else None)
+    return url or (repo.pr_url(pr_number) if repo else None)
 
 
 def format_pr_number(
     pr_number: int,
     *,
-    repo: GithubRepoRenderTarget | None = None,
+    repo: RepoAddress | None = None,
     url: str | None = None,
 ) -> ui.Message:
     """Render a pull request number, linking it when its repo or URL is known."""
@@ -46,7 +39,7 @@ def format_pr_label(
     include_hash: bool = True,
     is_draft: bool = False,
     prefix: str = "",
-    repo: GithubRepoRenderTarget | None = None,
+    repo: RepoAddress | None = None,
     url: str | None = None,
 ) -> ui.Message:
     """Render a pull request label for CLI output."""

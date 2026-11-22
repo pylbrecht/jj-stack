@@ -7,15 +7,10 @@ from collections.abc import Awaitable
 from jj_stack.errors import CliError
 from jj_stack.forge.errors import ForgeError
 from jj_stack.forge.github.client import REPO_NOT_FOUND_REASON
-from jj_stack.forge.github.resolution import (
-    GithubRepoAddress,
-    GithubTarget,
-    UnresolvedGithubTarget,
-)
 from jj_stack.forge.models import Repo
-from jj_stack.forge.protocol import Forge
+from jj_stack.forge.protocol import Forge, RepoAddress
 from jj_stack.models.git import GitRemote
-from jj_stack.ui import Message, cmd, code
+from jj_stack.ui import Message, code
 
 
 def repo_lookup_reason(error: ForgeError) -> str:
@@ -50,7 +45,7 @@ async def observe_github_repo(github: Forge, *, hint: Message | None = None) -> 
 def remote_and_github_unavailable_messages(
     *,
     github_error: Message | None,
-    github_repo: GithubRepoAddress | None,
+    github_repo: RepoAddress | None,
     remote: GitRemote | None,
     remote_error: Message | None,
 ) -> tuple[Message, ...]:
@@ -67,15 +62,3 @@ def remote_and_github_unavailable_messages(
                 ("GitHub unavailable for ", code(github_repo.full_name), ": ", github_error)
             )
     return tuple(messages)
-
-
-def require_github_target(target: GithubTarget | UnresolvedGithubTarget) -> GithubTarget:
-    """Stop with the resolution error when the repo has no usable GitHub remote."""
-
-    if isinstance(target, GithubTarget):
-        return target
-    raise CliError(
-        target.remote_error or target.github_repo_error or "No Git remote is configured.",
-        hint=t"Configure one GitHub remote, then rerun. "
-        t"{cmd('jj-stack doctor')} reports what it found.",
-    )

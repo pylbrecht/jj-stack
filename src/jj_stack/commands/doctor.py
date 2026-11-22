@@ -31,14 +31,12 @@ from jj_stack.forge.github import resolution
 from jj_stack.forge.github.auth import github_token, github_token_from_env
 from jj_stack.forge.github.client import GithubClient
 from jj_stack.forge.github.error_messages import repo_lookup_reason
-from jj_stack.forge.github.resolution import (
-    GithubRepoAddress,
-    select_submit_remote,
-)
+from jj_stack.forge.github.resolution import GithubRepoAddress
 from jj_stack.forge.github.stack_availability import github_stacks_unavailable_error
 from jj_stack.forge.gitlab.client import GitlabClient
 from jj_stack.forge.gitlab.resolution import parse_gitlab_project
 from jj_stack.forge.models import Repo
+from jj_stack.forge.target import select_submit_remote
 from jj_stack.models.git import GitRemote
 from jj_stack.pr_branch_namespace import current_pr_branch_namespace
 from jj_stack.state.operation_lock import operation_lock

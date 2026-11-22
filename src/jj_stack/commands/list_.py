@@ -32,12 +32,8 @@ from jj_stack.commands._json_status import (
 from jj_stack.console import color_when
 from jj_stack.errors import EXIT_INCOMPLETE, CliError, ErrorMessage, error_message
 from jj_stack.forge.github.error_messages import remote_and_github_unavailable_messages
-from jj_stack.forge.github.resolution import (
-    GithubRepoAddress,
-    GithubTarget,
-    UnresolvedGithubTarget,
-    resolve_github_target,
-)
+from jj_stack.forge.protocol import RepoAddress
+from jj_stack.forge.target import ForgeTarget, UnresolvedForgeTarget, resolve_forge_target
 from jj_stack.formatting import format_pr_label, pr_url
 from jj_stack.identifiers import ChangeId, short_change_id
 from jj_stack.stack.change_state import (
@@ -114,11 +110,11 @@ def _run_list(
         current_tracked_commit_id = None
 
     github_target = (
-        resolve_github_target(context.jj_client.list_git_remotes())
+        resolve_forge_target(context.jj_client.list_git_remotes())
         if state.prs
-        else UnresolvedGithubTarget()
+        else UnresolvedForgeTarget()
     )
-    github_repo = github_target.repo if isinstance(github_target, GithubTarget) else None
+    github_repo = github_target.repo if isinstance(github_target, ForgeTarget) else None
     current_heads = frozenset(
         stack.head.commit_id
         for stack in discovered
@@ -166,7 +162,7 @@ def _run_list(
             )
         github_error = error_message(lookups) if isinstance(lookups, CliError) else None
         for message in remote_and_github_unavailable_messages(
-            github_error=github_target.github_repo_error or github_error,
+            github_error=github_target.repo_error or github_error,
             github_repo=github_repo,
             remote=github_target.remote,
             remote_error=github_target.remote_error,
@@ -301,7 +297,7 @@ def _emit_stale_stacks_advisory(rows: tuple[StackRow, ...]) -> None:
 
 def _build_row(
     *,
-    github_repo: GithubRepoAddress | None,
+    github_repo: RepoAddress | None,
     is_current: bool,
     prepared_stack: PreparedLocalStack,
     pr_lookups: dict[str, ChangeObservation] | CliError,
@@ -431,7 +427,7 @@ def _format_size(
     size: int,
     changes: tuple[StackStatusChange, ...],
     *,
-    repo: GithubRepoAddress | None,
+    repo: RepoAddress | None,
 ) -> ui.Message:
     """Count the changes only when they are not one PR each."""
 
@@ -446,7 +442,7 @@ def _format_size(
 def _format_pr_summary(
     references: tuple[tuple[int, str | None], ...],
     *,
-    repo: GithubRepoAddress | None,
+    repo: RepoAddress | None,
 ) -> ui.Message:
     if len(references) == 1:
         number, url = references[0]
@@ -464,7 +460,7 @@ def _format_pr_summary(
 
 def _stack_table(
     *,
-    github_repo: GithubRepoAddress | None,
+    github_repo: RepoAddress | None,
     orphans: tuple[OrphanedRecord, ...],
     rendered_change_ids: dict[ChangeId, str],
     rows: tuple[StackRow, ...],

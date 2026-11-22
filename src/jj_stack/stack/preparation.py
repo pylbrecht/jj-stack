@@ -8,11 +8,7 @@ from dataclasses import dataclass
 import jj_stack.ui as ui
 from jj_stack.bootstrap import CommandContext
 from jj_stack.errors import UnsupportedStackError
-from jj_stack.forge.github.resolution import (
-    GithubTarget,
-    UnresolvedGithubTarget,
-    resolve_github_target,
-)
+from jj_stack.forge.target import ForgeTarget, UnresolvedForgeTarget, resolve_forge_target
 from jj_stack.jj.client import JjClient
 from jj_stack.models.stack import LocalStack
 from jj_stack.models.tracking import TrackingState
@@ -26,7 +22,7 @@ class PreparedLocalStack:
     """Selected history, saved links, and one resolved or unavailable GitHub target."""
 
     client: JjClient
-    github_target: GithubTarget | UnresolvedGithubTarget
+    github_target: ForgeTarget | UnresolvedForgeTarget
     stack: LocalStack
     state: TrackingState
 
@@ -44,7 +40,7 @@ def prepare_local_stack(
     jj_client = context.jj_client
     state_store = context.state_store
     state = state_store.load()
-    github_target = resolve_github_target(jj_client.list_git_remotes())
+    github_target = resolve_forge_target(jj_client.list_git_remotes())
     if fetch_remote_state and github_target.remote is not None:
         jj_client.fetch_remote(remote=github_target.remote.name)
 

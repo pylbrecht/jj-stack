@@ -21,14 +21,13 @@ from jj_stack.bootstrap import CommandContext, GlobalOptions, bootstrap_context
 from jj_stack.commands.cleanup.actions import UNTRUSTED_PR_STATES
 from jj_stack.errors import CliError, UsageError
 from jj_stack.forge.errors import ForgeError
-from jj_stack.forge.github.error_messages import require_github_target
 from jj_stack.forge.github.models import GithubStack
-from jj_stack.forge.github.resolution import resolve_github_target
 from jj_stack.forge.github.stack_safety import (
     dissolve_github_stack,
     selected_github_stack,
 )
 from jj_stack.forge.protocol import Forge, StackObjects
+from jj_stack.forge.target import require_forge_target, resolve_forge_target
 from jj_stack.identifiers import ChangeId, short_change_id
 from jj_stack.models.tracking import TrackingState
 from jj_stack.stack.change_state import classify, stop_error
@@ -102,8 +101,8 @@ async def _run_github_unstack(
 ) -> int:
     """Remove GitHub stack number `target`, or the one holding the selected local stack."""
 
-    github_target = require_github_target(
-        resolve_github_target(context.jj_client.list_git_remotes())
+    github_target = require_forge_target(
+        resolve_forge_target(context.jj_client.list_git_remotes())
     )
 
     async with context.open_forge(repo=github_target.repo) as github_client:

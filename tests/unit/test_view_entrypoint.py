@@ -13,8 +13,9 @@ from jj_stack.bootstrap import GlobalOptions
 from jj_stack.errors import EXIT_INCOMPLETE, CliError
 from jj_stack.forge.github.client import GithubClient
 from jj_stack.forge.github.models import GithubPullRequest
-from jj_stack.forge.github.resolution import GithubRepoAddress, GithubTarget
+from jj_stack.forge.github.resolution import GithubRepoAddress
 from jj_stack.forge.models import BranchRef, PRHead
+from jj_stack.forge.target import ForgeTarget
 from jj_stack.jj.cli_args import JjCliArgs
 from jj_stack.jj.client import JjClient
 from jj_stack.models.git import GitRemote
@@ -205,7 +206,7 @@ def test_view_keeps_selector_errors_between_their_neighboring_reports(
     )
 
 
-_GITHUB_TARGET = GithubTarget(
+_GITHUB_TARGET = ForgeTarget(
     remote=GitRemote(
         name="origin",
         fetch_url="git@github.com:octo-org/stacked-prs.git",

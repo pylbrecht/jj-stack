@@ -42,16 +42,8 @@ from jj_stack.concurrency import wait_for_read_tasks
 from jj_stack.config import MergeMethod
 from jj_stack.errors import CliError, error_hint
 from jj_stack.forge.errors import ForgeError
-from jj_stack.forge.github.error_messages import (
-    observe_github_repo,
-    read_or_stop,
-    require_github_target,
-)
-from jj_stack.forge.github.resolution import (
-    GithubRepoAddress,
-    GithubTarget,
-    resolve_github_target,
-)
+from jj_stack.forge.github.error_messages import observe_github_repo, read_or_stop
+from jj_stack.forge.github.resolution import GithubRepoAddress
 from jj_stack.forge.github.run import GithubRun, ObservedTrunk
 from jj_stack.forge.merge import (
     ChecksPending,
@@ -61,6 +53,7 @@ from jj_stack.forge.merge import (
     PendingMerge,
 )
 from jj_stack.forge.protocol import Forge, StackObjects
+from jj_stack.forge.target import ForgeTarget, require_forge_target, resolve_forge_target
 from jj_stack.formatting import pr_url
 from jj_stack.identifiers import ChangeId, short_change_id
 from jj_stack.models.stack import LocalStack
@@ -99,7 +92,7 @@ class PreparedMerge:
     options: MergeOptions
     stack: LocalStack
     state: TrackingState
-    target: GithubTarget
+    target: ForgeTarget
     target_change_id: ChangeId | None
 
     @property
@@ -134,7 +127,7 @@ async def _run_merge(
     context: CommandContext,
     options: MergeOptions,
 ) -> int:
-    target = require_github_target(resolve_github_target(context.jj_client.list_git_remotes()))
+    target = require_forge_target(resolve_forge_target(context.jj_client.list_git_remotes()))
     async with context.open_forge(repo=target.repo) as github_client:
         stacks = github_client.stacks
         if stacks is None:
@@ -206,7 +199,7 @@ async def _request_when_checks_pass(
     *,
     context: CommandContext,
     options: MergeOptions,
-    target: GithubTarget,
+    target: ForgeTarget,
     github_client: Forge,
     stacks: StackObjects,
 ) -> tuple[MergeResult | PendingMerge, ObservedTrunk, PreparedMerge]:

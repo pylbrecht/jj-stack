@@ -39,7 +39,7 @@ from jj_stack.commands.view_details import (
 )
 from jj_stack.errors import EXIT_INCOMPLETE, CliError, UnsupportedStackError, error_message
 from jj_stack.forge.github.error_messages import remote_and_github_unavailable_messages
-from jj_stack.forge.github.resolution import GithubRepoAddress
+from jj_stack.forge.protocol import RepoAddress
 from jj_stack.formatting import (
     format_pr_label,
     render_commit_blocks,
@@ -711,7 +711,7 @@ def render_status_advisory_lines(
 def _render_summary_change_lines(
     *,
     change: StackStatusChange,
-    repo: GithubRepoAddress | None,
+    repo: RepoAddress | None,
     prerendered_blocks: dict[CommitId, tuple[str, ...]],
 ) -> tuple[ui.Renderable, ...]:
     """Render one change inside a submitted or unsubmitted summary section."""
@@ -728,7 +728,7 @@ def _render_summary_change_lines(
 def _format_status_summary(
     change: StackStatusChange,
     *,
-    repo: GithubRepoAddress | None,
+    repo: RepoAddress | None,
 ) -> ui.Message:
     report = report_change(change.state)
     pr = change.pr
