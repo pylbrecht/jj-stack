@@ -4,11 +4,11 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass
-from urllib.parse import urlparse
 
 import jj_stack.ui as ui
 from jj_stack.errors import CliError, ErrorHint, ErrorMessage, error_message
 from jj_stack.forge.models import Repo
+from jj_stack.forge.remote_url import parse_remote_url
 from jj_stack.identifiers import CommitId
 from jj_stack.models.git import GitRemote
 from jj_stack.pr_branch_namespace import current_pr_branch_namespace
@@ -89,41 +89,11 @@ def parse_github_repo(remote: GitRemote) -> GithubRepoAddress | None:
 def _parse_github_url(remote_url: str) -> GithubRepoAddress | None:
     """Parse a GitHub repo target from one Git remote URL."""
 
-    parsed = urlparse(remote_url)
-    if parsed.scheme in {"http", "https", "ssh"} and parsed.hostname:
-        raw_path = parsed.path
-    elif _looks_like_scp_remote(remote_url):
-        _, _, raw_path = remote_url.partition(":")
-    else:
+    location = parse_remote_url(remote_url)
+    if location is None or len(location.path) != 2:
         return None
-
-    # A trailing slash has to go before `.git` does, or `repo.git/` keeps the suffix and
-    # every request 404s against `<owner>/<repo>.git`.
-    normalized_path = raw_path.strip("/").removesuffix(".git")
-    parts = [part for part in normalized_path.split("/") if part]
-    if len(parts) != 2:
-        return None
-    owner, repo = parts
+    owner, repo = location.path
     return GithubRepoAddress(owner=owner, repo=repo)
-
-
-def _looks_like_scp_remote(url: str) -> bool:
-    """Return whether a remote uses Git's scp-style host:path shorthand."""
-
-    prefix, separator, suffix = url.partition(":")
-    if not separator or not prefix or not suffix:
-        return False
-    # `scheme://…` is a URL, not scp-style `host:path`. urlparse already handled the schemes
-    # that carry a GitHub host; one with no host at all, like `file:///srv/repo.git`, names
-    # no GitHub repo and must not be read as `srv/repo`.
-    if suffix.startswith("//"):
-        return False
-    if "/" in prefix or "\\" in prefix:
-        return False
-    # Reject Windows drive paths like C:/repo.git.
-    if len(prefix) == 1 and prefix.isalpha():
-        return False
-    return True
 
 
 def resolve_github_target(

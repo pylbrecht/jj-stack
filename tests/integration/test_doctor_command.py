@@ -2,13 +2,17 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 import jj_stack.commands.doctor as doctor_mod
 from jj_stack.forge.github.client import GithubClient
 from jj_stack.jj.client import JjClient
 from jj_stack.pr_branch_namespace import current_pr_branch_namespace
 
 from ..support.fake_github import create_app
+from ..support.fake_gitlab import FakeGitlabHost
 from ..support.integration_helpers import (
+    configure_fake_gitlab_environment,
     expose_pr_branch_namespace,
     init_fake_github_repo,
     init_fake_github_repo_with_submitted_feature,
@@ -240,3 +244,53 @@ def test_doctor_fails_when_github_token_missing(
     assert "connectivity" in captured.out
     assert "trunk branch" in captured.out
     assert "prior check failed" in captured.out
+
+
+def test_doctor_reaches_the_gitlab_host_of_a_nested_group_remote_through_the_command(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    host = FakeGitlabHost()
+    repo, config_path = configure_fake_gitlab_environment(
+        host=host,
+        monkeypatch=monkeypatch,
+        tmp_path=tmp_path,
+    )
+
+    exit_code = run_main(repo, config_path, "doctor")
+    output = " ".join(capsys.readouterr().out.split())
+
+    assert exit_code == 0
+    assert "platform/tools/stacked-mrs on gitlab.test" in output
+    assert "signed in as octocat" in output
+    assert "GitLab 19.5.4-ee" in output
+    assert host.commands
+    assert all(command[:3] == ("glab-cf", "--ship", "api") for command in host.commands)
+
+
+@pytest.mark.parametrize(
+    ("host", "reason"),
+    (
+        (FakeGitlabHost(login_valid=False), "authentication failed"),
+        (FakeGitlabHost(version="19.0.3-ee"), "jj-stack requires GitLab 19.1 or later"),
+    ),
+)
+def test_doctor_fails_on_a_rejected_gitlab_login_or_an_unsupported_version(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+    host: FakeGitlabHost,
+    reason: str,
+) -> None:
+    repo, config_path = configure_fake_gitlab_environment(
+        host=host,
+        monkeypatch=monkeypatch,
+        tmp_path=tmp_path,
+    )
+
+    exit_code = run_main(repo, config_path, "doctor")
+    output = " ".join(capsys.readouterr().out.split())
+
+    assert exit_code == 1
+    assert reason in output

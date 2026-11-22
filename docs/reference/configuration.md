@@ -64,6 +64,30 @@ branches, it signs the mutable commits in that revset that you have not already 
 you still set the older `git.sign-on-push = true`, jj treats it as
 `revsets.git-sign-on-push = "~signed() & mine()"`, so jj-stack signs your own unsigned commits.
 
+## GitLab
+
+GitLab support is in progress. So far only `jj-stack doctor` works with a GitLab project; other
+commands stop before they read or change anything. To select GitLab for a repo:
+
+```toml
+[jj-stack]
+forge = "gitlab"
+
+[jj-stack.gitlab]
+command = ["glab"]
+```
+
+- `forge` is `github` (the default) or `gitlab`.
+- `command` is the argument list that jj-stack runs to reach the GitLab API, with `api` and its
+  own options after it. The default is `["glab"]`. A wrapper that takes its own options works
+  too, for example `["glab-cf", "--ship"]`. The command must pass arguments, standard input and
+  output, the exit status, and the environment through to `glab` unchanged.
+
+jj-stack reads the GitLab host and the project path, including nested groups, from the remote
+URL, and always passes that host to `glab` as `--hostname`. The host must be the name under
+which `glab auth login` stored your login. jj-stack supports GitLab 19.1 or later.
+`jj-stack doctor` checks your login and the GitLab version through the configured command.
+
 ## Authentication
 
 For GitHub API requests, jj-stack uses the first available token from:

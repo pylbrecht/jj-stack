@@ -17,14 +17,17 @@ from jj_stack.jj.client import JjClient, JjCommandError, PRRefUpdate
 from jj_stack.models.tracking import PRIdentity, SubmittedBaseline, TrackedPR, TrackingState
 from jj_stack.stack.selected import select_stack_path
 
+from ..support.fake_gitlab import FakeGitlabHost
 from ..support.integration_helpers import (
     commit_file,
+    configure_fake_gitlab_environment,
     current_operation_id,
     init_repo,
     jj_commit_id,
     remote_refs,
     run_command,
 )
+from .submit_command_helpers import run_main
 
 
 def test_help_uses_jj_colors_outside_a_workspace(tmp_path: Path, monkeypatch, capsys) -> None:
@@ -578,3 +581,23 @@ def test_remote_git_commands_keep_an_ssh_prompt_visible_under_a_spinner(
     assert "Reaching the remote" in transcript.rsplit("Enter passphrase", 1)[1], transcript
     if remote_command == "push":
         assert remote_refs(remote)["refs/heads/jj-stack/feature"] == commit
+
+
+def test_commands_without_gitlab_support_stop_before_any_gitlab_request(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    host = FakeGitlabHost()
+    repo, config_path = configure_fake_gitlab_environment(
+        host=host,
+        monkeypatch=monkeypatch,
+        tmp_path=tmp_path,
+    )
+
+    exit_code = run_main(repo, config_path, "submit")
+    error = " ".join(capsys.readouterr().err.split())
+
+    assert exit_code != 0
+    assert "does not support GitLab yet" in error
+    assert host.commands == []

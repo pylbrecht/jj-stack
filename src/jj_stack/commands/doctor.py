@@ -1,8 +1,11 @@
-"""Check repo setup and GitHub access.
+"""Check repo setup and forge access.
 
 Checks the Git remote, authentication, GitHub access, your permission to push to the repo, stacked
 pull request support, and GitHub's default branch. It also reports PR bookmarks imported by a
 fetch and leftovers from an interrupted checkout or sync.
+
+With `jj-stack.forge = "gitlab"`, it checks the GitLab project in the remote URL, your GitLab
+login through the configured command, and that the host runs GitLab 19.1 or later.
 
 Run `jj-stack doctor --fix` to configure fetches to skip PR branches, forget untracked PR
 bookmarks imported by a fetch, and remove checkout or sync leftovers. These repairs affect only
@@ -16,6 +19,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import re
 from dataclasses import dataclass
 
 import jj_stack.console as console
@@ -32,13 +36,15 @@ from jj_stack.forge.github.resolution import (
     select_submit_remote,
 )
 from jj_stack.forge.github.stack_availability import github_stacks_unavailable_error
+from jj_stack.forge.gitlab.client import GitlabClient
+from jj_stack.forge.gitlab.resolution import parse_gitlab_project
 from jj_stack.forge.models import Repo
 from jj_stack.models.git import GitRemote
 from jj_stack.pr_branch_namespace import current_pr_branch_namespace
 from jj_stack.state.operation_lock import operation_lock
 from jj_stack.ui import Message
 
-HELP = "Check repo setup and GitHub connectivity"
+HELP = "Check repo setup and forge connectivity"
 
 
 @dataclass(slots=True, frozen=True)
@@ -51,6 +57,9 @@ class CheckResult:
 # The checks that need the GitHub API, in report order. The later ones are skipped when the
 # repo cannot be reached.
 _GITHUB_CHECKS = ("connectivity", "push access", "GitHub stacks", "trunk branch")
+_GITHUB_LABELS = ("GitHub remote", "GitHub auth", *_GITHUB_CHECKS)
+_GITLAB_LABELS = ("GitLab remote", "GitLab auth", "GitLab version")
+_MINIMUM_GITLAB_VERSION = (19, 1)
 
 
 def doctor(
@@ -59,7 +68,7 @@ def doctor(
     fix: bool,
 ) -> int:
     """CLI entrypoint for `doctor`."""
-    context = bootstrap_context(global_options)
+    context = bootstrap_context(global_options, forges=("github", "gitlab"))
     with (
         operation_lock(
             context.state_store,
@@ -80,6 +89,7 @@ async def _run_checks(
 ) -> list[CheckResult]:
     results: list[CheckResult] = []
 
+    on_gitlab = context.config.forge == "gitlab"
     remote_result, selected_remote = _check_git_remote(context=context)
     results.append(remote_result)
 
@@ -89,9 +99,7 @@ async def _run_checks(
                 "PR branch fetch",
                 "PR bookmarks",
                 "checkout/sync leftovers",
-                "GitHub remote",
-                "GitHub auth",
-                *_GITHUB_CHECKS,
+                *(_GITLAB_LABELS if on_gitlab else _GITHUB_LABELS),
             )
         )
         return results
@@ -101,8 +109,81 @@ async def _run_checks(
     )
     results.append(_check_pr_bookmarks(context=context, fix=fix))
     results.append(_check_pr_branch_temp(context=context, fix=fix))
+    if on_gitlab:
+        results.extend(await _run_gitlab_checks(context=context, remote=selected_remote))
+    else:
+        results.extend(await _run_github_checks(context=context, remote=selected_remote))
 
-    github_result, parsed_repo = _check_github_remote(selected_remote)
+    return results
+
+
+async def _run_gitlab_checks(
+    *,
+    context: CommandContext,
+    remote: GitRemote,
+) -> list[CheckResult]:
+    project = parse_gitlab_project(remote)
+    if project is None:
+        return [
+            CheckResult(
+                "GitLab remote",
+                "fail",
+                t"remote {ui.bookmark(remote.name)} does not have fetch and push URLs "
+                t"for the same GitLab project; use GitLab HTTPS or SSH URLs",
+            ),
+            *_skipped(*_GITLAB_LABELS[1:]),
+        ]
+
+    results = [CheckResult("GitLab remote", "ok", f"{project.full_name} on {project.host}")]
+    client = context.open_gitlab(project=project)
+    try:
+        user = await client.get_current_user()
+    except ForgeError as error:
+        return [
+            *results,
+            CheckResult("GitLab auth", "fail", f"{project.host}: {error.user_facing_reason()}"),
+            *_skipped("GitLab version"),
+        ]
+
+    results.append(CheckResult("GitLab auth", "ok", f"signed in as {user.username}"))
+    results.append(await _check_gitlab_version(client))
+    return results
+
+
+async def _check_gitlab_version(
+    client: GitlabClient,
+) -> CheckResult:
+    try:
+        version = await client.get_version()
+    except ForgeError as error:
+        return CheckResult(
+            "GitLab version",
+            "fail",
+            f"could not read the version: {error.user_facing_reason()}",
+        )
+
+    numbers = tuple(int(part) for part in re.findall(r"\d+", version)[:2])
+    if not numbers:
+        return CheckResult("GitLab version", "fail", f"could not read the version {version!r}")
+
+    if numbers < _MINIMUM_GITLAB_VERSION:
+        return CheckResult(
+            "GitLab version",
+            "fail",
+            f"GitLab {version}; jj-stack requires GitLab "
+            f"{'.'.join(map(str, _MINIMUM_GITLAB_VERSION))} or later",
+        )
+
+    return CheckResult("GitLab version", "ok", f"GitLab {version}")
+
+
+async def _run_github_checks(
+    *,
+    context: CommandContext,
+    remote: GitRemote,
+) -> list[CheckResult]:
+    results: list[CheckResult] = []
+    github_result, parsed_repo = _check_github_remote(remote)
     results.append(github_result)
 
     if parsed_repo is None:
