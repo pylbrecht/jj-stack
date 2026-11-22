@@ -11,10 +11,13 @@ from pathlib import Path
 import jj_stack
 import jj_stack.console as console
 import jj_stack.ui as ui
-from jj_stack.config import AppConfig, load_config
+from jj_stack.config import AppConfig, ForgeKind, load_config
 from jj_stack.errors import CliError
 from jj_stack.forge.github.client import GithubClient, build_github_client
 from jj_stack.forge.github.resolution import GithubRepoAddress
+from jj_stack.forge.gitlab.client import GitlabClient
+from jj_stack.forge.gitlab.resolution import GitlabProjectAddress
+from jj_stack.forge.gitlab.transport import GlabTransport, run_subprocess
 from jj_stack.jj.cli_args import JjCliArgs
 from jj_stack.jj.client import JjClient
 from jj_stack.jj.settings import read_jj_settings
@@ -57,6 +60,21 @@ class CommandContext:
 
         return build_github_client(repo=repo, token=token)
 
+    def open_gitlab(
+        self,
+        *,
+        project: GitlabProjectAddress,
+    ) -> GitlabClient:
+        """Open the GitLab host of `project` through the configured command."""
+
+        return GitlabClient(
+            GlabTransport(
+                command=tuple(self.config.gitlab.command),
+                hostname=project.host,
+                runner=run_subprocess,
+            )
+        )
+
 
 @dataclass(slots=True, frozen=True)
 class GlobalOptions:
@@ -68,9 +86,16 @@ class GlobalOptions:
 
 
 def bootstrap_context(
-    options: GlobalOptions, *, snapshot_working_copy: bool = True
+    options: GlobalOptions,
+    *,
+    snapshot_working_copy: bool = True,
+    forges: tuple[ForgeKind, ...] = ("github",),
 ) -> CommandContext:
-    """Resolve the repo, read jj's config once, and initialize the console and logging."""
+    """Resolve the repo, read jj's config once, and initialize the console and logging.
+
+    A command that does not list the configured forge in `forges` stops here, before it reads
+    or changes anything.
+    """
 
     repo = options.repo.resolve() if options.repo is not None else None
     validate_repo_path(repo)
@@ -80,6 +105,13 @@ def bootstrap_context(
     console.adopt_jj_config(color=settings.string("ui", "color"), colors=settings.table("colors"))
     jj_client = JjClient(repo_root, cli_args=options.cli_args, settings=settings)
     config = load_config(settings=settings)
+    if config.forge not in forges:
+        raise CliError(
+            "This command does not support GitLab yet.",
+            hint=t"{ui.code('jj-stack.forge')} is {ui.code(config.forge)}; only "
+            t"{ui.cmd('jj-stack doctor')} supports GitLab so far.",
+        )
+
     install_pr_branch_namespace(config.branch_prefix)
     if snapshot_working_copy:
         jj_client.enable_initial_working_copy_snapshot()

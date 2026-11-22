@@ -21,6 +21,7 @@ _REJECTED_REF_CHARS = frozenset(" ~^:?*[\\\x7f") | frozenset(map(chr, range(32))
 
 
 MergeMethod = Literal["merge", "rebase", "squash"]
+ForgeKind = Literal["github", "gitlab"]
 
 
 def parse_comma_separated_flag_values(
@@ -111,9 +112,19 @@ class LoggingConfig(BaseModel):
         return level_name
 
 
+class GitlabConfig(BaseModel):
+    """How jj-stack reaches a GitLab host."""
+
+    # An argument list, so a wrapper with its own options, such as `["glab-cf", "--ship"]`,
+    # runs unchanged with `api` and jj-stack's options after it.
+    command: list[str] = Field(default_factory=lambda: ["glab"], min_length=1)
+
+
 class AppConfig(RepoConfig):
     """Top-level configuration model."""
 
+    forge: ForgeKind = "github"
+    gitlab: GitlabConfig = Field(default_factory=GitlabConfig)
     logging: LoggingConfig = Field(default_factory=LoggingConfig)
 
 
@@ -141,16 +152,17 @@ def _raise_on_likely_config_typos(*, config_data: Mapping[str, object]) -> None:
     _raise_on_likely_unknown_keys(
         table_path=f"[{CONFIG_SECTION}]",
         config_data=config_data,
-        allowed_keys=(*RepoConfig.model_fields, "logging"),
+        allowed_keys=tuple(AppConfig.model_fields),
     )
 
-    logging_config = config_data.get("logging")
-    if isinstance(logging_config, Mapping):
-        _raise_on_likely_unknown_keys(
-            table_path=f"[{CONFIG_SECTION}.logging]",
-            config_data=logging_config,
-            allowed_keys=tuple(LoggingConfig.model_fields),
-        )
+    for table, model in (("gitlab", GitlabConfig), ("logging", LoggingConfig)):
+        table_config = config_data.get(table)
+        if isinstance(table_config, Mapping):
+            _raise_on_likely_unknown_keys(
+                table_path=f"[{CONFIG_SECTION}.{table}]",
+                config_data=table_config,
+                allowed_keys=tuple(model.model_fields),
+            )
 
 
 def _raise_on_likely_unknown_keys(
@@ -173,6 +185,6 @@ def _raise_on_likely_unknown_keys(
 
 
 def _format_validation_issue(location: tuple[str, ...], message: str) -> str:
-    if location[:1] == ("logging",) and len(location) == 2:
-        return f"[{CONFIG_SECTION}.logging].{location[1]}: {message}"
+    if location[:1] in {("gitlab",), ("logging",)} and len(location) >= 2:
+        return f"[{CONFIG_SECTION}.{location[0]}].{'.'.join(location[1:])}: {message}"
     return f"[{CONFIG_SECTION}].{'.'.join(location)}: {message}"

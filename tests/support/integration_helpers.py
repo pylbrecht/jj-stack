@@ -28,6 +28,7 @@ from .fake_github import (
     create_app,
     initialize_bare_repo,
 )
+from .fake_gitlab import FakeGitlabHost, create_gitlab_app, glab_runner
 
 _TEMPLATE_OWNER = "octo-org"
 _TEMPLATE_NAME = "stacked-prs"
@@ -105,6 +106,34 @@ def configure_fake_github_environment(
         fake_repo=fake_repo,
     )
     return config_path
+
+
+def configure_fake_gitlab_environment(
+    *,
+    host: FakeGitlabHost,
+    monkeypatch,
+    tmp_path: Path,
+) -> tuple[Path, Path]:
+    """Create a repo whose remote names a nested-group project on the fake GitLab host."""
+
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state-home"))
+    monkeypatch.setattr(
+        "jj_stack.bootstrap.run_subprocess",
+        glab_runner(create_gitlab_app(host), host),
+    )
+    repo = init_repo(tmp_path)
+    remote_url = f"https://{host.hostname}/platform/tools/stacked-mrs.git"
+    run_command(["jj", "git", "remote", "add", "origin", remote_url], repo)
+    config_path = write_fake_github_config(
+        tmp_path,
+        extra_lines=[
+            'forge = "gitlab"',
+            "",
+            "[jj-stack.gitlab]",
+            'command = ["glab-cf", "--ship"]',
+        ],
+    )
+    return repo, config_path
 
 
 def _copy_fake_github_repo_from_template(
