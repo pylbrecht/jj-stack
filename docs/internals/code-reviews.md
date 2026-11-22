@@ -7,7 +7,7 @@ performance regressions.
 ## Establish the intended behavior
 
 Read [design.md](design.md) and the root [AGENTS.md](../../AGENTS.md) before reviewing a behavior
-change. Trace the affected workflow through local commits, remote refs, GitHub, and tracking.
+change. Trace the affected workflow through local commits, remote refs, the forge, and tracking.
 Check what happens if it stops partway through and the user follows the recovery instructions.
 
 Pay attention to rewrites, relinks, divergence, and local deletion; these can leave the systems in
@@ -41,7 +41,7 @@ metadata. An elaborate recovery system is rarely justified for data that can be 
 
 ## Review the user experience and docs
 
-Assume readers know `jj`, Git, and GitHub. Check docs, help, diagnostics, and output for:
+Assume readers know `jj`, Git, and their forge. Check docs, help, diagnostics, and output for:
 
 - disagreement with supported behavior or with each other
 - missing context about what happened, what changed, or what to do next
