@@ -6,23 +6,26 @@ user docs, built-in help, diagnostics, and other user-facing output.
 
 ## Audience and vocabulary
 
-Assume readers know `jj`, Git, and GitHub. Use standard terms such as revset, bookmark, `@-`,
-`trunk()`, change ID, and working copy without teaching them again.
+Assume readers know `jj`, Git, and their forge. Use standard terms such as revset, bookmark,
+`@-`, `trunk()`, change ID, and working copy without teaching them again.
 
 Use product nouns consistently:
 
-- A **pull request** or **PR** is the GitHub object.
+- A **forge** is the service that hosts the Git repo and its pull requests. GitHub is the
+  supported forge. Say "forge" when a statement applies to any forge, and name the forge when it
+  applies to only one.
+- A **pull request** or **PR** is the forge object that proposes to merge a PR branch.
 - A **PR branch** is a Git branch intended to be a PR head. "Remote PR branch" is redundant.
-- A **stack** is an ordered chain of local changes or GitHub pull requests. Say **local stack**
-  or **GitHub stack** when the distinction matters. Use **stack membership** for which PRs belong
-  to a stack.
+- A **stack** is an ordered chain of local changes or pull requests. Say **local stack** or
+  **GitHub stack** (GitHub's server-side stack object) when the distinction matters. Use **stack
+  membership** for which PRs belong to a stack.
 - **Review** means human review activity: comments, approvals, requested changes, reviewers, and
   feedback. It is not a synonym for a PR, branch, or stack.
 - A **saved pull request link**, shortened to **saved link**, connects a PR to a local change.
   The collection is **tracking data**. Use the verbs **link** and **relink**, rather than attach,
   adopt, or claim, in user guidance.
-- A **direct merge** is one GitHub performs immediately rather than through a merge queue. Define
-  it the first time a page or help text uses the term.
+- A **direct merge** is one the forge performs immediately rather than through a merge queue.
+  Define it the first time a page or help text uses the term.
 
 Name commands in full in hints and messages: `jj-stack relink`, not `relink`.
 

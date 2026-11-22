@@ -6,11 +6,19 @@ belong in the [user guide](../README.md) and built-in `--help`.
 
 ## Summary
 
-`jj-stack` turns a linear chain of `jj` changes into GitHub pull requests. The `jj` DAG determines
-stack topology; local tracking connects each change to its PR and last submitted commit. Change
-IDs and PR branch names stay stable across rewrites.
+`jj-stack` turns a linear chain of `jj` changes into pull requests on a forge. The `jj` DAG
+determines stack topology; local tracking connects each change to its PR and last submitted
+commit. Change IDs and PR branch names stay stable across rewrites.
 
-Each invocation supports one Git remote and one GitHub repo, with one PR per change. Cross-repo
+A **forge** is the service that hosts the Git repo and its pull requests. GitHub is the supported
+forge. The rules below apply to any forge unless they are stated for GitHub alone, as a **GitHub
+variant**. A GitHub behaviour cited only as the reason for a rule does not limit that rule to
+GitHub.
+
+A **forge rebase** rebases PRs on the forge without merging them. On GitHub it is a rebase of a
+complete native GitHub stack through GitHub's UI.
+
+Each invocation supports one Git remote and one forge repo, with one PR per change. Cross-repo
 stacks and nonlinear local stacks are unsupported. Inspection can still report some unsupported
 histories to help users repair them.
 
@@ -22,7 +30,7 @@ Suppose the selected local history is:
 trunk() <- A <- B <- C
 ```
 
-`A`, `B`, and `C` are changes, and `C` is the selected head. On GitHub they become:
+`A`, `B`, and `C` are changes, and `C` is the selected head. On the forge they become:
 
 ```text
 PR for C: head jj-stack/C, base jj-stack/B
@@ -65,7 +73,7 @@ record contains:
 - `SubmittedBaseline`: the exact commit last successfully submitted or explicitly adopted
 
 These two values are created, replaced, and removed together. Partial records are invalid. The
-GitHub repo is command context, not a per-change field; tracking must not be carried to another
+forge repo is command context, not a per-change field; tracking must not be carried to another
 repo. A branch name or a matching PR without a saved record does not establish tracking.
 
 Two checks recur below:
@@ -74,12 +82,12 @@ Two checks recur below:
 - **Snapshot match**: an identity match whose PR head SHA also equals the submitted baseline.
 
 An identity match establishes which PR to act on. A snapshot match also establishes which version
-GitHub reports. [Tracking and recovery](#tracking-and-recovery) defines which commands update
+the forge reports. [Tracking and recovery](#tracking-and-recovery) defines which commands update
 these records.
 
 ### PR branches and PR bases
 
-GitHub pull requests are branch-based: every PR needs one head branch and one base branch. The
+Forge pull requests are branch-based: every PR needs one head branch and one base branch. The
 `jj` DAG supplies neither, so `jj-stack` maintains remote branches to hold the submitted commits.
 
 The initial name is:
@@ -100,15 +108,15 @@ name, `submit` stops.
 
 The branch name stays stable after creation, even if the change's description changes.
 
-The GitHub base branch for a change is:
+The PR base branch for a change is:
 
 - the parent change's remote branch when the parent is in the local stack
 - the explicit base's PR branch for the bottom change selected by `submit --base`
 - otherwise the trunk branch
 
-`trunk()` defines the lower bound of a stack without specifying a GitHub branch name. GitHub's
+`trunk()` defines the lower bound of a stack without specifying a forge branch name. The forge's
 reported default branch is used unless a different branch at local `trunk()` contradicts that
-choice. If GitHub reports no default, exactly one branch on the selected remote must point at
+choice. If the forge reports no default, exactly one branch on the selected remote must point at
 `trunk()`. A `trunk()` that falls back to `root()` cannot be resolved this way.
 
 ### The reserved branch namespace
@@ -128,7 +136,7 @@ solely because a PR bookmark is visible.
 A visible bookmark in the reserved namespace does not make its commit immutable for `jj-stack`
 subprocesses, so a stack can be adopted from a clone that fetched the namespace. The exception
 applies when the bookmark matches one saved PR and its submitted commit, or when the commit is
-not divergent; a divergent target outside saved tracking stays immutable, so a fetched GitHub
+not divergent; a divergent target outside saved tracking stays immutable, so a fetched forge
 rewrite is not mistaken for a local copy. Two untracked remote bookmarks pointing at the same
 commit prevent this exception, even if both are in the reserved namespace. Trunk, tags, and
 bookmarks outside the namespace still make their targets immutable. If the submitted commit and
@@ -145,7 +153,9 @@ after inspection.
 ### GitHub stack objects
 
 A **GitHub stack** is GitHub's server-side object for an ordered group of pull requests. This is
-distinct from the local stack derived from the `jj` DAG.
+distinct from the local stack derived from the `jj` DAG. A forge without such an object reports
+empty stack membership for every PR, so the GitHub stack rules below have no effect there;
+`unstack --stack`, which acts only on a GitHub stack, stops.
 
 A GitHub stack requires at least two pull requests. Submitting a one-change local stack therefore
 creates an ordinary PR. When a later `submit` extends that stack to two or more PRs,
@@ -172,17 +182,17 @@ If `jj` reports that a workspace is stale, the command stops and tells the user 
 ## Command responsibilities
 
 The command policies below define eligibility and mutation rules. This table identifies which
-command owns each operation. A **direct merge** is one GitHub completes immediately rather than
-through a merge queue.
+command owns each operation. A **direct merge** is one the forge completes immediately rather
+than through a merge queue.
 
 | Command | Responsibility |
 |---|---|
-| `view` | Inspect selected local stacks and their current GitHub state. |
+| `view` | Inspect selected local stacks and their current forge state. |
 | `list` | List local paths with tracked changes, plus orphaned tracked PRs. |
 | `submit` | Create PRs and refresh the selected stack; only this command publishes new changes. |
-| `sync` | Update a local stack after a merge or native GitHub stack rebase. |
+| `sync` | Update a local stack after a merge or a forge rebase. |
 | `sync --all` | Sync stacks after merges and finish eligible PRs without local copies. |
-| `merge` | Request a GitHub merge; wait for completion and run sync unless `--no-wait` is used. |
+| `merge` | Request a forge merge; wait for completion and run sync unless `--no-wait` is used. |
 | `unstack` | Remove a GitHub stack; `--local` instead forgets local tracking. |
 | `cleanup` | Remove eligible artifacts and links; optionally close explicitly selected PRs. |
 | `checkout` | Adopt existing PRs and edit the selected change in the current workspace. |
@@ -194,13 +204,13 @@ through a merge queue.
 `jj` owns general history editing. There is no standalone `jj-stack rebase` command.
 
 `sync` and `merge` fetch ordinary remote state before planning, including during `--dry-run`. A
-merge that waits fetches again after GitHub completes it. `checkout --pull-request` does the same
-when the selected PR's head commit is not already local. Some commands also fetch single commits
-by ID without creating refs: `sync` and `submit` fetch a moved PR head and GitHub's trunk tip to
-compare contents, `submit` fetches a PR branch's commit to recover an interrupted first submit,
-and `relink` fetches the PR's head, each only when it needs that commit. `view`, `list`, and the
-other commands never fetch. Commands evaluate `trunk()` after any ordinary fetch they perform;
-without one, they use the locally available trunk.
+merge that waits fetches again after the forge completes it. `checkout --pull-request` does the
+same when the selected PR's head commit is not already local. Some commands also fetch single
+commits by ID without creating refs: `sync` and `submit` fetch a moved PR head and the forge's
+trunk tip to compare contents, `submit` fetches a PR branch's commit to recover an interrupted
+first submit, and `relink` fetches the PR's head, each only when it needs that commit. `view`,
+`list`, and the other commands never fetch. Commands evaluate `trunk()` after any ordinary fetch
+they perform; without one, they use the locally available trunk.
 
 A dry run previews planned changes without applying them. It does not promise an untouched local
 repo: the fetches above and ordinary `jj` working-copy snapshots can still occur.
@@ -209,14 +219,14 @@ repo: the fetches above and ordinary `jj` working-copy snapshots can still occur
 
 Within the supported scope, these rules are ordered; a lower rule never weakens a higher one.
 
-1. **Never lose work.** `jj` can undo almost any local mistake; GitHub cannot undo every remote
-   mutation. Protect local changes first and treat destructive GitHub operations explicitly.
+1. **Never lose work.** `jj` can undo almost any local mistake; a forge cannot undo every remote
+   mutation. Protect local changes first and treat destructive forge operations explicitly.
 2. **Check the target.** Before changing a branch, PR, GitHub stack, or repo, confirm it is
    the intended one. Bind the mutation to that identity and version when the platform supports a
    conditional write or lease.
 3. **Never guess.** Ambiguous linkage stops the command. Never guess which PR belongs to a change
    or silently adopt one that appeared in place of another.
-4. **Merge what was submitted.** Merge only the exact submitted commit, using GitHub's
+4. **Merge what was submitted.** Merge only the exact submitted commit, using the forge's
    expected-head check to bind the request to that commit.
 5. **Respect command scope.** Stack-scoped commands mutate only selected PRs, though they may
    inspect the surrounding GitHub stack. Repo-wide cleanup and the other exceptions are listed
@@ -237,12 +247,13 @@ The submitted baseline changes only after:
 - `relink` records the observed PR branch target
 - `checkout` imports an existing PR
 
-A GitHub merge request does not update the baseline; the automatic sync afterward may do so.
+A request to the forge to merge does not update the baseline; the automatic sync afterward may
+do so.
 
-Commands use the current `jj` DAG, remote refs, GitHub state, and saved tracking. GitHub reports
-PR state and stack membership; ancestry checks establish whether submitted work reached trunk.
-Tracking stores no topology, desired bases, current PR state, operation progress, or aliases
-between GitHub commits and local change IDs.
+Commands use the current `jj` DAG, remote refs, forge state, and saved tracking. The forge
+reports PR state and stack membership; ancestry checks establish whether submitted work reached
+trunk. Tracking stores no topology, desired bases, current PR state, operation progress, or
+aliases between forge commits and local change IDs.
 
 Commands do not automatically replace a tracked missing, closed, moved, or ambiguous PR. A merged
 PR directs the user to `sync`; other broken links require explicit repair or cleanup. Once cleanup
@@ -255,7 +266,7 @@ An unreadable or invalid file blocks commands that load it and names the path to
 using `checkout` or `relink` to restore links. A newer unsupported schema requires an upgrade.
 
 Mutating commands serialize per repo while they observe and mutate. A command that waits for
-GitHub, an editor, or a describe helper releases that serialization while it waits and observes
+the forge, an editor, or a describe helper releases that serialization while it waits and observes
 again before it mutates. An interruption can leave completed external effects even if the command
 reports failure. A retry computes what remains from current observations; it never replays a
 saved plan or selector. The submitted baseline records an acknowledged commit, not pending work.
@@ -267,7 +278,7 @@ saved plan or selector. The submitted baseline records an acknowledged commit, n
 Commands that inspect pull requests use `origin` when it exists, otherwise the sole remote.
 Several remotes without `origin` are ambiguous.
 
-Only GitHub's public API is supported. Remote URL hostnames are not validated; the path is
+On GitHub, only the public API is supported. Remote URL hostnames are not validated; the path is
 interpreted as a `github.com` owner and repo.
 
 Stack lifecycle commands default to `@` when the working-copy change has a nonblank description
@@ -309,9 +320,9 @@ The command-specific planning requirements are:
   already be the change's current commit after an interrupted submit, but only when the identity
   matches and the PR head agrees with that same commit. A rewrite of the submitted commit with
   the same content, as `sync` defines it below, may also be replaced, except that while a
-  selected change's PR has merged the command stops and names `sync`. After a native GitHub
-  stack rebase, `submit` therefore puts the local commits back on their old base. Any other
-  target stops the command.
+  selected change's PR has merged the command stops and names `sync`. After a
+  forge rebase, `submit` therefore puts the local commits back on their old
+  base. Any other target stops the command.
 - `merge` requires the current local commit and remote PR branch ref both to equal
   `SubmittedBaseline.commit_id`, plus a live snapshot match. Tree or diff equivalence is not
   sufficient.
@@ -326,10 +337,10 @@ repair or forget the saved link.
 ### Submit and branch transport
 
 `submit` publishes only the selected stack, bottom-up. It creates missing PRs, moves existing
-PR branches, updates PR bases and content, and refreshes GitHub stack membership.
+PR branches, updates PR bases and content, and on GitHub refreshes GitHub stack membership.
 
-Before any remote mutation, `submit` requires a reachable repo and an available GitHub Stacks
-API, then observes PRs and complete stack membership.
+Before any remote mutation, `submit` requires a reachable repo, on GitHub an available GitHub
+Stacks API, then observes PRs and complete stack membership.
 
 `submit --base B H` publishes the changes above `B` through `H`, written `(B, H]`. `B` must be
 an ancestor of `H` on the selected single-parent path and is excluded from every mutation. Its
@@ -356,7 +367,7 @@ created. If selected children share a GitHub stack with `P`, submit stops before
 only one active PR remains in its selection, it becomes an ordinary PR.
 
 All selected PR branches move in one atomic push. Every update carries the target
-`jj-stack` observed for that GitHub branch, including expected absence for a new branch. The
+`jj-stack` observed for that remote branch, including expected absence for a new branch. The
 push binds each update to that target with a Git lease. If any ref moved, the whole push
 fails; there is no sequential fallback. An untracked branch is accepted only for first-submit
 recovery after an interrupted push: exactly one managed branch may end in the selected short
@@ -366,18 +377,21 @@ If an intermediate parent PR is not open, `submit` stops; it does not skip that 
 choosing the child's base.
 
 A topology rewrite counts as a PR update even when the tree diff is unchanged. During a
-rewrite, `submit` may temporarily retarget selected PRs to prevent GitHub from auto-closing a PR
-whose new base contains its head. An interruption may leave bases at their old value, trunk, or
-the desired parent; a rerun finishes the update without replacing PRs.
+rewrite, `submit` may temporarily retarget selected PRs so that the forge does not close a PR
+whose new base contains its head; GitHub closes such a PR. An interruption may leave bases at
+their old value, trunk, or the desired parent; a rerun finishes the update without replacing PRs.
 
 An open PR currently in a merge queue is not updated. `submit` stops the selected stack before
-moving any PR branch or changing any PR, and tells the user to wait for GitHub to merge it.
+moving any PR branch or changing any PR, and tells the user to wait for the forge to merge it.
 
 ### Merge
 
 `merge` considers consecutive PRs from the bottom of the selected stack. Each PR must be open
 and non-draft. Its local change must still exist and have no divergence or unresolved conflicts.
 The first draft or closed, unmerged PR ends the sequence.
+
+On a forge without GitHub stacks, `merge` stops before any mutation. The rest of this section
+is a GitHub variant.
 
 GitHub receives one asynchronous merge request for the selected PRs, whether it contains one
 PR or several. A multi-PR request acts on the matching GitHub stack. Every request passes the
@@ -392,7 +406,7 @@ Before requesting a merge or queue entry, `merge` waits for required PR checks a
 first failure. `--dry-run` and `--no-wait` skip this wait.
 
 `merge` waits for completion by default, then fetches and syncs the whole selected stack before
-returning, including changes above the last merged PR and commits GitHub rewrote. While a PR's
+returning, including changes above the last merged PR and commits the forge rewrote. While a PR's
 head and branch disagree, that sync retries for a few seconds before stopping. An `enqueued`
 result means GitHub accepted the PRs into the queue; waiting continues by observing every selected
 PR until all report merged. Observations must still match the planned PR identities and submitted
@@ -403,7 +417,7 @@ removal. A removal stops the wait without local changes, reports the recorded re
 temporary merge commit, and names the next step: `sync` when a lower PR already merged, otherwise
 the same `merge` again.
 
-`--no-wait` returns after GitHub accepts the request; the user runs `sync` once GitHub merges.
+`--no-wait` returns after the forge accepts the request; the user runs `sync` once it merges.
 Interrupting a wait does not cancel the request. Rerunning `merge` for the same action and
 expected head resumes waiting; a different action or expected head stops. A queue request's merge
 method is not part of that identity because the queue chooses it. Queue waiting has no deadline;
@@ -414,17 +428,17 @@ resolved before the merge request. It does not reinterpret the original revset a
 the changed trunk. If the fetch leaves that head with no visible commit, the local copies are
 already gone, and the follow-up runs only cleanup for the merged PRs.
 
-GitHub merge success and local reconciliation are separate outcomes. If GitHub completes the
+Forge merge success and local reconciliation are separate outcomes. If the forge completes the
 merge but the automatic sync stops, `merge` returns the sync failure status and says that the
-GitHub merge must not be retried.
+forge merge must not be retried.
 
 For a direct merge, the merge method comes from `--method`, otherwise from `merge_method` in
 repo configuration. Without either choice, `merge` uses the repo's only allowed method when
 there is just one. If several methods are allowed, it prefers `rebase`, then `squash`, then
 `merge`, unless any change in the complete selected local stack has a commit signature. Because
 merging can discard commit signatures, a signed stack requires an explicit flag or setting when
-several methods are allowed. This includes changes not being merged yet, which GitHub may rewrite
-when earlier changes are merged. Signature presence is observed from the selected commits
+several methods are allowed. This includes changes not being merged yet, which the forge may
+rewrite when earlier changes are merged. Signature presence is observed from the selected commits
 without verifying trust or storing it in tracking. This requirement makes the merge method an
 explicit user choice; it does not promise signature preservation.
 
@@ -437,21 +451,21 @@ request includes its expected head commit. Trunk advancing does not block the me
 request depends on the branch name, not its commit. One PR selected from a larger GitHub stack
 remains a stack merge and is not retargeted this way.
 
-A submitted change GitHub already merged is still a stop, decided from the pull request's own
+A submitted change the forge already merged is still a stop, decided from the pull request's own
 reported state rather than from trunk position. The diagnostic names `sync`, which checks trunk
 before removing the local copy.
 
 ### Repo policy
 
-A merge initiated through GitHub's UI, auto-merge, or another client is supported. Rebasing a
-complete native GitHub stack through GitHub's UI is also supported. A later `sync` reconciles
-either result under the rules below.
+A merge initiated through the forge's UI, auto-merge, or another client is supported. A forge
+rebase is also supported. A later `sync` reconciles either result under the rules below.
 
-`jj-stack` leaves merge eligibility to GitHub. It observes required checks and chooses direct
-merge or queue routing; GitHub enforces approvals, conflicts, and other repo rules.
+`jj-stack` leaves merge eligibility to the forge. It observes required checks and chooses direct
+merge or queue routing; the forge enforces approvals, conflicts, and other repo rules.
 
-A rejected merge preserves GitHub's reason and says what to do next: rebase onto trunk, resolve,
-and submit again for a conflict; address the reported issue on GitHub and retry otherwise.
+A rejected merge preserves the forge's reason and says what to do next: rebase onto trunk,
+resolve, and submit again for a conflict; address the reported issue on the forge and retry
+otherwise.
 
 ### Trunk evidence and sync
 
@@ -475,8 +489,8 @@ evidence only for ordinary cleanup, or syncs the local stack still holding the o
 same GitHub stack, which cleans up the merged PR itself. A copy with only immutable commits above
 it, such as one a fetched branch shows, holds no local work and does not count. A `sync` whose
 selected change has a saved link but no visible commit after the fetch runs only cleanup for the
-merged PRs of that change's GitHub stack. A native GitHub stack rebase without a merge requires
-`sync` for that stack; `sync --all` discovers work from merge evidence.
+merged PRs of that change's GitHub stack. A forge rebase without a merge requires `sync` for
+that stack; `sync --all` discovers work from merge evidence.
 
 When an unmerged local change sits below a submitted change whose submitted commit or merge result
 is on trunk, `sync` stops without mutation. Rebasing would silently decide whether that local
@@ -489,7 +503,7 @@ Here unpublished local work means a mutable, non-empty change whose commit is no
 baseline. An empty change modifies no files relative to its parent, so removing it discards no
 content.
 
-#### Updating local changes after a merge or a GitHub rebase
+#### Updating local changes after a merge or a forge rebase
 
 `sync` decides every stop for the selected stack before it changes anything. It updates the
 remaining local changes only when:
@@ -505,16 +519,16 @@ A PR branch can be replaced when its head is the submitted commit, the current l
 rewrite of the submitted commit with the same content: applying the submitted change to the head's
 only parent gives exactly the head's tree. That parent must be on trunk's first-parent history or
 be the head, submitted commit, or local commit of another PR in the stack, in any local order:
-GitHub rewrites along its own stack, which a local reorder does not change. This covers the PRs
-GitHub rewrites when it merges part of a GitHub stack or rebases one, whichever trunk commit it
-chose. Only content counts, so a push by anyone
-that changes just a commit message or author is replaced too. GitHub's commits are fetched only
-for this comparison; they never become local changes or submitted baselines. Any other head is
-someone else's work and stops `sync`. A PR whose head and branch disagree also stops it, since
-GitHub may still be updating them.
+the forge rewrites along its own stack, which a local reorder does not change. This covers the
+PRs the forge rewrites when it merges part of a stack or performs a forge rebase, whichever trunk
+commit it chose. Only content counts, so a push by anyone that changes just a commit message or
+author is replaced too. The forge's commits are fetched only for this comparison; they never
+become local changes or submitted baselines. Any other head is someone else's work and stops
+`sync`. A PR whose head and branch disagree also stops it, since the forge may still be updating
+them.
 
-When a change below has its work on trunk, the remaining changes move onto trunk. When GitHub
-rebased the stack without merging any of it, they move onto the parent of GitHub's bottom commit
+When a change below has its work on trunk, the remaining changes move onto trunk. After a forge
+rebase without a merge, they move onto the parent of the forge's bottom commit
 unless they are already based on that commit or on a commit whose first-parent history includes
 it. Otherwise they stay where they are. `sync` never rebases merely because trunk advanced;
 ordinary `jj rebase` owns that workflow.
@@ -523,7 +537,7 @@ ordinary `jj rebase` owns that workflow.
 leased on the head it observed, and records them as the submitted baselines.
 
 If any selected open PR is still in a merge queue, `sync` leaves the selected stack unchanged.
-Once GitHub no longer reports it queued, ordinary trunk evidence determines whether `sync`
+Once the forge no longer reports it queued, ordinary trunk evidence determines whether `sync`
 reconciles merged work or has nothing to do.
 
 It rebases surviving changes even when they contain conflicts. If a submitted change remains
@@ -590,18 +604,18 @@ the current head PR, including from an orphaned PR that was in the same GitHub s
 explicitly supplied overview replaces it. A lone PR has no overview comment. New PRs are created
 in the requested draft state.
 
-Submit maintains a per-PR revision-history comment with the most recent versions available from
-GitHub's force-push timeline. It shows readers how the PR evolved, remains after cleanup, and
-never determines topology or mutation eligibility.
+Submit maintains a per-PR revision-history comment with the most recent versions the forge
+reports; on GitHub they come from its force-push timeline. It shows readers how the PR evolved,
+remains after cleanup, and never determines topology or mutation eligibility.
 
 Without an edited draft choice, existing PRs become draft only with `--draft=all` and become ready
 only with `--open`; plain `submit --draft` leaves their draft state unchanged. With `--edit`,
-GitHub's current state and those command-wide defaults populate one editable draft choice per
-change. The validated document then determines each selected PR's draft state without adding local
-state. A newly generated editor file remains until the entire submit succeeds. If the command
-stops, the user can pass that file to `--resume-edit`; the retry re-observes the local stack and
-GitHub, and accepts the file only when it names exactly the currently selected changes. The file
-carries no submit plan or phase.
+the forge's current state and those command-wide defaults populate one editable draft choice per
+change. The validated document then determines each selected PR's draft state without adding
+local state. A newly generated editor file remains until the entire submit succeeds. If the
+command stops, the user can pass that file to `--resume-edit`; the retry re-observes the local
+stack and the forge, and accepts the file only when it names exactly the currently selected
+changes. The file carries no submit plan or phase.
 
 `--reviewers` and `--team-reviewers` request the named reviewers even when a PR is otherwise
 unchanged and never remove omitted reviewers. `--re-request` acts on an otherwise unchanged PR.
@@ -622,18 +636,19 @@ Markdown block boundaries, code, tables, and explicit hard line breaks remain un
 overview comment, and tracking record unchanged. Rerunning it after the stack is gone is safe.
 
 `unstack --local` removes tracking for the selected local stack without checking PR lifecycle or
-trunk evidence. It leaves GitHub and local history unchanged.
+trunk evidence. It leaves the forge and local history unchanged.
 
-Closing pull requests through GitHub's UI or `gh pr close` is supported and leaves tracking in
-place. To create new PRs for the same changes, close the old PRs, run cleanup, then submit again.
+Closing pull requests through the forge's UI or CLI, such as `gh pr close`, is supported and
+leaves tracking in place. To create new PRs for the same changes, close the old PRs, run cleanup,
+then submit again.
 
 `cleanup --pull-request <pr> --close` and `cleanup --pull-request orphans --close` combine closure
 and cleanup for an explicit saved selection. The flag is invalid without `--pull-request`.
 Identity, PR-branch ownership, open dependents, GitHub stack membership, and the managed overview
 comment are all checked before closing an open PR. Explicit cleanup first retargets the PR to
-trunk so that GitHub can still reopen it once its base branch is deleted. `sync` closes a PR whose
-submitted commit is on trunk without retargeting: GitHub rejects changing a PR's base
-to a branch that already contains its head, and reopening already-landed work protects nothing.
+trunk so that the forge can still reopen it once its base branch is deleted. `sync` closes a PR
+whose submitted commit is on trunk without retargeting: GitHub rejects changing a PR's base to a
+branch that already contains its head, and reopening already-landed work protects nothing.
 A PR already closed or merged skips closure and follows ordinary cleanup. A closure failure
 stops later selected mutations.
 
@@ -643,7 +658,7 @@ end of `sync`.
 
 A PR is eligible for cleanup only when:
 
-- GitHub reports the saved PR closed or merged
+- the forge reports the saved PR closed or merged
 - for a merged PR, no visible mutable local copy still needs `sync`
 - no PR in the same repo that is open, or closed but still reopenable, uses the saved head ref
   as its base
@@ -652,12 +667,13 @@ A PR is eligible for cleanup only when:
 
 A closed PR counts while its own head branch still exists. GitHub cannot reopen it without a
 base branch or retarget it while it is closed, so deleting its base would require restoring that
-branch to reopen it. If its head branch is already absent, cleanup no longer treats that PR as a
-dependent needing the base. Merged PRs do not count as dependents. Neither does a selected PR
-whose head branch the same run deletes, or which it retargets to trunk; cleanup handles it before
-its base, so one run cleans up a whole stack from the top down.
+branch to reopen it. If its head branch is already
+absent, cleanup no longer treats that PR as a dependent needing the base. Merged PRs do not count
+as dependents. Neither does a selected PR whose head branch the same run deletes, or which it
+retargets to trunk; cleanup handles it before its base, so one run cleans up a whole stack from
+the top down.
 
-Branch dependencies come from PR bases on GitHub, not local descendants. A PR that cannot be
+Branch dependencies come from PR bases on the forge, not local descendants. A PR that cannot be
 inspected is skipped. Once mutation starts, a failure stops cleanup and leaves later records for
 a rerun.
 
@@ -666,7 +682,7 @@ a rerun.
 `checkout --pull-request` treats the selected PR as the head of the remote chain to adopt and
 edit. `--revset` selects an exact local head. `--pick` combines locally tracked paths with active
 GitHub stack resources, showing each GitHub stack's number, top active PR, base, size, status, and
-whether it is already local. Choosing a GitHub-only or partially tracked stack passes its top
+whether it is already local. Choosing an untracked or partially tracked stack passes its top
 active PR through the same adoption path as `--pull-request`; the picker does not create another
 tracking path.
 
@@ -688,11 +704,12 @@ The remote target must equal the local commit or saved baseline. `--replace-remo
 this check: it records the remote commit as the baseline so a later `submit` can replace it. It
 does not waive identity or branch checks.
 
-`doctor` observes setup, push permission on the selected repo, GitHub Stacks API availability, and
-local leftovers from interrupted `checkout` or `sync`. It changes nothing without `--fix`; its
-repairs are restoring the reserved PR-branch exclusion in remote fetch configuration, forgetting
-untracked remote bookmarks in that namespace, and removing the temporary import ref and bookmark.
-`checkout` and `sync` also remove that leftover when they start. It never mutates GitHub.
+`doctor` observes setup, push permission on the selected repo, on GitHub the availability of the
+GitHub Stacks API, and local leftovers from interrupted `checkout` or `sync`. It changes nothing
+without `--fix`; its repairs are restoring the reserved PR-branch exclusion in remote fetch
+configuration, forgetting untracked remote bookmarks in that namespace, and removing the temporary
+import ref and bookmark. `checkout` and `sync` also remove that leftover when they start. It never
+mutates the forge.
 
 ### Inspection
 
@@ -700,33 +717,34 @@ untracked remote bookmarks in that namespace, and removing the temporary import 
 when the file is absent. An invalid file or failure to locate a jj repo is an error,
 not a negative result, and exits 11.
 
-`view` and `list` are read-only. For local stack rows, both ask GitHub for current PR state
+`view` and `list` are read-only. For local stack rows, both ask the forge for current PR state
 without fetching. Orphan rows in `list` show saved identity only; they do not claim to report the
 PR's live state.
 
 Both commands project paths from the local `jj` DAG. One projected path may therefore show
 changes that explicit submit boundaries placed in several native GitHub stacks. Inspection does
-not segment the path by GitHub resource or infer an omitted submit boundary.
+not segment the path by GitHub stack or infer an omitted submit boundary.
 
 Both report whether an open PR has a merge-queue entry; position and intermediate queue phases
 are not shown.
 
-Both report specific merge warnings alongside reviews and checks, omitting GitHub's generic
-`BLOCKED` label. Blocked PRs receive a batched lookup of applicable rules, review threads, and
-checks; `view --verbose` includes other open PRs. Rules come from the branch a PR's GitHub stack
-lands on, or its own base outside a stack. Both also report whether GitHub would merge each open
-PR now, its approvals from reviewers with write access, and how far the stack's landing branch has
-moved past its bottom PR, unless the bottom change was edited or rebased since its last submit;
-they never infer a review decision GitHub leaves out. Drafts, queued PRs, and changes with a
-reported problem are excluded. Details are discarded if the PR head or base changes during the
-lookup. GitHub computes merge state lazily, so an unknown state is not reported or polled.
+Both report specific merge warnings alongside reviews and checks, omitting a generic blocked
+state such as GitHub's `BLOCKED` label. Blocked PRs receive a batched lookup of applicable rules,
+review threads, and checks; `view --verbose` includes other open PRs. Rules come from the branch a
+PR's GitHub stack lands on, or its own base outside a stack. Both also report whether the forge
+would merge each open PR now, its approvals from reviewers with write access, and how far the
+stack's landing branch has moved past its bottom PR, unless the bottom change was edited or
+rebased since its last submit; they never infer a review decision the forge leaves out. Drafts,
+queued PRs, and changes with a reported problem are excluded. Details are discarded if the PR head
+or base changes during the lookup. GitHub computes merge state lazily, so
+an unknown state is not reported or polled.
 
 Neither command guesses. A change with no saved PR identity is reported as not submitted,
 even if a PR happens to use the branch name that change would generate. A saved PR is always
 the one reported; a different open PR on its branch is a warning. An open PR whose head is
 neither the local commit nor the submitted baseline is reported as moved, not as healthy.
 Inspection does not apply the
-[replacement rule](#updating-local-changes-after-a-merge-or-a-github-rebase).
+[replacement rule](#updating-local-changes-after-a-merge-or-a-forge-rebase).
 
 Inspection tolerates fetched side copies of merged changes. `view` walks past immutable or
 divergent side copies when a supported path remains, and shows merged local work as
