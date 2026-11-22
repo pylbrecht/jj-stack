@@ -3,12 +3,8 @@
 from __future__ import annotations
 
 import hashlib
-import os
 import re
-import subprocess
-from collections.abc import Iterable
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
 from pathlib import Path
 from typing import Annotated
 
@@ -18,12 +14,8 @@ from fastapi.responses import JSONResponse
 from jj_stack.forge.github.details import GithubReviewThread
 from jj_stack.forge.github.models import GithubStack
 
-_FAKE_GITHUB_GIT_ENV = {
-    "GIT_AUTHOR_EMAIL": "fake-github@example.com",
-    "GIT_AUTHOR_NAME": "Fake GitHub",
-    "GIT_COMMITTER_EMAIL": "fake-github@example.com",
-    "GIT_COMMITTER_NAME": "Fake GitHub",
-}
+from .fake_forge import FakeForgeRepo, FakePullRequest, initialize_bare_git_dir
+
 _GRAPHQL_VARIABLE_PATTERN = r"\$[_A-Za-z][_0-9A-Za-z]*"
 _WEB_ORIGIN = "https://github.test"
 
@@ -71,21 +63,13 @@ class FakeMergeRequirements:
     resolve_threads: bool = False
 
 
-@dataclass(slots=True)
-class FakeGithubPR:
-    """Mutable pull request state served by the fake API."""
+@dataclass(slots=True, kw_only=True)
+class FakeGithubPR(FakePullRequest):
+    """GitHub pull request state served by the fake API."""
 
-    base_ref: str
-    body: str
     head_label: str
-    head_ref: str
-    head_sha: str
     is_draft: bool
-    merge_commit_sha: str | None
-    merged_at: str | None
     node_id: str
-    number: int
-    title: str
     auto_merge_enabled: bool = False
     checks: dict[str, str] = field(default_factory=dict)
     merge_checks: dict[str, str] = field(default_factory=dict)
@@ -94,7 +78,6 @@ class FakeGithubPR:
     labels: list[str] = field(default_factory=list)
     requested_reviewers: list[str] = field(default_factory=list)
     requested_team_reviewers: list[str] = field(default_factory=list)
-    state: str = "open"
     # A head GitHub still reports after the branch moved; it catches up seconds later.
     lagging_head: str | None = None
 
@@ -103,7 +86,7 @@ class FakeGithubPR:
         return "merged" if self.merged_at is not None else self.state
 
     def to_graphql_payload(self, repo: FakeGithubRepo) -> dict[str, object]:
-        head_target = self._refresh_head_sha(repo)
+        head_target = repo.refresh_head(self)
         required = frozenset(name for rules in repo.requirements(self) for name in rules.checks)
         return {
             "baseRefName": self.base_ref,
@@ -137,21 +120,6 @@ class FakeGithubPR:
             "title": self.title,
             "url": f"{_WEB_ORIGIN}/{repo.full_name}/pull/{self.number}",
         }
-
-    def _refresh_head_sha(self, repo: FakeGithubRepo) -> str | None:
-        """Track the head branch; like GitHub, keep the last sha once the branch is gone."""
-
-        current_head = repo.ref_target(self.head_ref)
-        if current_head is not None:
-            if current_head != self.head_sha and not repo.is_ancestor(
-                self.head_sha,
-                current_head,
-            ):
-                repo.pr_force_pushes.setdefault(self.number, []).append(
-                    (self.head_sha, current_head)
-                )
-            self.head_sha = current_head
-        return current_head
 
 
 @dataclass(slots=True)
@@ -222,14 +190,6 @@ class FakeQueueEvent:
     head_sha: str | None = None
 
 
-@dataclass(slots=True, frozen=True)
-class FakeGithubPREvent:
-    """Observable PR mutation recorded by the fake API."""
-
-    kind: str
-    pr_number: int
-
-
 @dataclass(slots=True)
 class FakeGithubIssueComment:
     """Mutable issue comment state served by the fake API."""
@@ -244,22 +204,17 @@ class FakeGithubIssueComment:
         }
 
 
-@dataclass(slots=True)
-class FakeGithubRepo:
-    """Repo metadata plus its backing bare Git repo."""
+@dataclass(slots=True, kw_only=True)
+class FakeGithubRepo(FakeForgeRepo[FakeGithubPR]):
+    """GitHub repo metadata, stacks, merge queue, and reviews on top of the fake forge core."""
 
-    git_dir: Path
     name: str
     owner: str
-    default_branch: str = "main"
     # The default repo allows only squash merges. Tests that need other repo policies flip these
     # settings directly.
     allow_merge_commit: bool = False
     allow_rebase_merge: bool = False
     allow_squash_merge: bool = True
-    # GitHub's "Automatically delete head branches" setting: a merged PR's branch goes away
-    # once the open PRs based on it have moved to the merged PR's base.
-    delete_branch_on_merge: bool = False
     merge_queue_enabled: bool = False
     merge_queue: list[FakeQueueEntry] = field(default_factory=list)
     # The latest queue timeline event per PR, as the merge-progress query selects it.
@@ -272,10 +227,8 @@ class FakeGithubRepo:
     pr_template: str | None = None
     stack_merge_operations: dict[int, FakeStackMergeOperation] = field(default_factory=dict)
     stack_merge_requests: list[tuple[int, str | None, str, str]] = field(default_factory=list)
-    auto_merge_reachable_heads: bool = True
     next_issue_comment_id: int = 1
     next_github_stack_number: int = 1
-    next_pr_number: int = 1
     next_pr_review_id: int = 1
     issue_comments: dict[int, list[FakeGithubIssueComment]] = field(default_factory=dict)
     github_stacks: dict[int, tuple[int, ...]] = field(default_factory=dict)
@@ -285,9 +238,6 @@ class FakeGithubRepo:
     pending_survivor_rewrites: list[tuple[str, tuple[tuple[int, str], ...]]] = field(
         default_factory=list
     )
-    pr_events: list[FakeGithubPREvent] = field(default_factory=list)
-    pr_force_pushes: dict[int, list[tuple[str, str]]] = field(default_factory=dict)
-    prs: dict[int, FakeGithubPR] = field(default_factory=dict)
     pr_reviews: dict[int, list[FakeGithubPRReview]] = field(default_factory=dict)
     branch_protection: dict[str, FakeMergeRequirements] = field(default_factory=dict)
     branch_rules: dict[str, FakeMergeRequirements] = field(default_factory=dict)
@@ -527,8 +477,6 @@ class FakeGithubRepo:
             head_ref=head_ref,
             head_sha=head_sha,
             is_draft=draft,
-            merge_commit_sha=None,
-            merged_at=None,
             node_id=f"PR_kwDO_fake_{number}",
             number=number,
             title=title,
@@ -548,60 +496,11 @@ class FakeGithubRepo:
                 return stack_number
         return None
 
-    def refresh_pr_state(
+    def squash_commit_message(
         self,
         pr: FakeGithubPR,
-        *,
-        branch_heads: dict[str, str] | None = None,
-    ) -> None:
-        # GitHub eventually detects a pushed head reachable from its existing base. This fake
-        # observes it synchronously; base edits separately reject an already-reachable head.
-        if not self.auto_merge_reachable_heads or pr.state != "open":
-            return
-        if branch_heads is None:
-            branch_heads = self.branch_heads()
-        base_commit = branch_heads.get(pr.base_ref)
-        head_commit = branch_heads.get(pr.head_ref)
-        if base_commit is None or head_commit is None:
-            return
-        if not self.is_ancestor(head_commit, base_commit):
-            return
-        if pr.merged_at is None:
-            pr.merged_at = datetime.now(UTC).isoformat().replace("+00:00", "Z")
-        pr.merge_commit_sha = head_commit
-        self.update_pr_state(
-            pr,
-            state="closed",
-        )
-
-    def refresh_prs(
-        self,
-        prs: Iterable[FakeGithubPR],
-    ) -> None:
-        """Refresh many pull requests off one shared branch-head snapshot."""
-
-        to_refresh = [candidate for candidate in prs if candidate.state == "open"]
-        if not to_refresh:
-            return
-        branch_heads = self.branch_heads()
-        for pr in to_refresh:
-            self.refresh_pr_state(pr, branch_heads=branch_heads)
-
-    def update_pr_base(
-        self,
-        pr: FakeGithubPR,
-        *,
-        base_ref: str,
-    ) -> None:
-        if pr.base_ref == base_ref:
-            return
-        pr.base_ref = base_ref
-        self.pr_events.append(
-            FakeGithubPREvent(
-                kind="base",
-                pr_number=pr.number,
-            )
-        )
+    ) -> str:
+        return f"{pr.title} (#{pr.number})"
 
     def update_pr_state(
         self,
@@ -609,202 +508,11 @@ class FakeGithubRepo:
         *,
         state: str,
     ) -> None:
-        if pr.state == state:
-            return
-        pr.state = state
-        if state == "closed":
+        if state == "closed" and pr.state != "closed":
             # GitHub removes a closed pull request from the merge queue.
             self.leave_merge_queue((pr.number,), reason="pr_closed")
-        self.pr_events.append(
-            FakeGithubPREvent(
-                kind="state",
-                pr_number=pr.number,
-            )
-        )
 
-    def ref_target(self, branch: str) -> str | None:
-        return self.branch_heads().get(branch)
-
-    def _record_merge(self, pr: FakeGithubPR, merge_commit: str) -> None:
-        """Mark the PR merged; a repo that deletes head branches also drops its branch.
-
-        GitHub first retargets open PRs based on that branch to the merged PR's base, so no
-        open PR is left pointing at a missing base.
-        """
-
-        pr.merged_at = datetime.now(UTC).isoformat().replace("+00:00", "Z")
-        pr.merge_commit_sha = merge_commit
-        self.update_pr_state(pr, state="closed")
-        if not self.delete_branch_on_merge:
-            return
-        for dependent in self.prs.values():
-            if dependent.state == "open" and dependent.base_ref == pr.head_ref:
-                self.update_pr_base(dependent, base_ref=pr.base_ref)
-        self._run_backing_git("update-ref", "-d", f"refs/heads/{pr.head_ref}")
-
-    def apply_squash_merge(self, pr: FakeGithubPR) -> str:
-        """Squash-merge the PR's head into its base on the backing Git repo.
-
-        Real GitHub computes a three-way merge before squashing, so the squash keeps whatever
-        else the base gained since the PR's merge base. Copying the head commit's tree instead
-        would silently revert an unrelated merge that landed first.
-        """
-
-        heads = self.branch_heads()
-        head_commit = heads[pr.head_ref]
-        base_commit = heads[pr.base_ref]
-        tree = self._run_backing_git(
-            "merge-tree", "--write-tree", base_commit, head_commit
-        ).splitlines()[0]
-        squash_commit = self._run_backing_git(
-            "commit-tree",
-            tree,
-            "-p",
-            base_commit,
-            "-m",
-            f"{pr.title} (#{pr.number})",
-            env=_FAKE_GITHUB_GIT_ENV,
-        )
-        self._run_backing_git(
-            "update-ref",
-            f"refs/heads/{pr.base_ref}",
-            squash_commit,
-        )
-        self._record_merge(pr, squash_commit)
-        return squash_commit
-
-    def apply_pr_merge(
-        self,
-        pr: FakeGithubPR,
-        *,
-        merge_method: str,
-    ) -> str:
-        """Apply one ordinary PR merge using GitHub's requested commit shape."""
-
-        if merge_method == "merge":
-            return self.apply_merge_commit((pr,))
-        if merge_method == "rebase":
-            return self.apply_rebase_merge(pr)
-        if merge_method == "squash":
-            return self.apply_squash_merge(pr)
-        raise AssertionError(f"Unknown fake GitHub merge method {merge_method!r}.")
-
-    def apply_rebase_merge(self, pr: FakeGithubPR) -> str:
-        """Replay the PR's commits onto its base, preserving their messages.
-
-        Like `git rebase`, commits whose changes the base already has are skipped.
-        """
-
-        heads = self.branch_heads()
-        rebase_commit = heads[pr.base_ref]
-        for commit in self._run_backing_git(
-            "rev-list",
-            "--reverse",
-            "--right-only",
-            "--cherry-pick",
-            "--no-merges",
-            f"{heads[pr.base_ref]}...{heads[pr.head_ref]}",
-        ).split():
-            rebase_commit = self._replay_commit(
-                commit_id=commit,
-                extra_header="x-fake-rebase-merge true",
-                parent_commit_id=rebase_commit,
-            )
-        self._run_backing_git(
-            "update-ref",
-            f"refs/heads/{pr.base_ref}",
-            rebase_commit,
-        )
-        self._record_merge(pr, rebase_commit)
-        return rebase_commit
-
-    def apply_merge_commit(
-        self,
-        prs: tuple[FakeGithubPR, ...],
-    ) -> str:
-        """Merge one PR or stack PR prefix through a shared merge commit."""
-
-        if not prs:
-            raise AssertionError("A merge commit requires at least one pull request.")
-        heads = self.branch_heads()
-        base_ref = prs[0].base_ref
-        base_commit = heads[base_ref]
-        head_commit = heads[prs[-1].head_ref]
-        tree = self._run_backing_git(
-            "merge-tree", "--write-tree", base_commit, head_commit
-        ).splitlines()[0]
-        merge_commit = self._run_backing_git(
-            "commit-tree",
-            tree,
-            "-p",
-            base_commit,
-            "-p",
-            head_commit,
-            "-m",
-            f"Merge through PR #{prs[-1].number}",
-            env=_FAKE_GITHUB_GIT_ENV,
-        )
-        self._run_backing_git(
-            "update-ref",
-            f"refs/heads/{base_ref}",
-            merge_commit,
-        )
-        for pr in prs:
-            self._record_merge(pr, merge_commit)
-        return merge_commit
-
-    def rewrite_pr_onto_base(
-        self,
-        pr: FakeGithubPR,
-        *,
-        base_ref: str,
-    ) -> str:
-        """Model GitHub changing an unmerged PR's base and rebasing its commit."""
-
-        heads = self.branch_heads()
-        rewritten = self._replay_commit(
-            commit_id=heads[pr.head_ref],
-            extra_header="x-fake-stack-rewrite true",
-            parent_commit_id=heads[base_ref],
-        )
-        self._run_backing_git(
-            "update-ref",
-            f"refs/heads/{pr.head_ref}",
-            rewritten,
-        )
-        self.update_pr_base(
-            pr,
-            base_ref=base_ref,
-        )
-        pr.head_sha = rewritten
-        return rewritten
-
-    def advance_branch(
-        self,
-        branch: str,
-        *,
-        path: str,
-        contents: str,
-        message: str = "advance trunk for stack rebase",
-    ) -> str:
-        """Add one file in a new commit on a backing branch."""
-
-        parent = self.ref_target(branch)
-        if parent is None:
-            raise AssertionError(f"Missing fake GitHub branch {branch}")
-        parent_tree = self._run_backing_git("rev-parse", f"{parent}^{{tree}}")
-        tree = self._tree_with_file(parent_tree, path=path, contents=contents)
-        commit = self._run_backing_git(
-            "commit-tree",
-            tree,
-            "-p",
-            parent,
-            "-m",
-            message,
-            env=_FAKE_GITHUB_GIT_ENV,
-        )
-        self._run_backing_git("update-ref", f"refs/heads/{branch}", commit)
-        return commit
+        super().update_pr_state(pr, state=state)
 
     def rewrite_pending_survivors(self) -> tuple[int, ...]:
         """Finish the survivor rewrites a stack merge left pending, as GitHub does later.
@@ -857,169 +565,6 @@ class FakeGithubRepo:
             expected_base = pr.head_ref
             parent = rewritten
         return tuple(rewritten_heads)
-
-    def replace_pr_head_contents(
-        self,
-        pr: FakeGithubPR,
-        *,
-        path: str,
-        contents: str,
-    ) -> str:
-        """Replace one rewritten PR head with a same-parent commit containing another file."""
-
-        head = self.ref_target(pr.head_ref)
-        if head is None:
-            raise AssertionError(f"Missing fake GitHub branch {pr.head_ref}")
-        parent = self._run_backing_git("rev-parse", f"{head}^")
-        original_tree = self._run_backing_git("rev-parse", f"{head}^{{tree}}")
-        tree = self._tree_with_file(original_tree, path=path, contents=contents)
-        rewritten = self._replay_commit(
-            commit_id=head,
-            drop_change_id=True,
-            extra_header="x-fake-github-content-edit true",
-            parent_commit_id=parent,
-            tree_id=tree,
-        )
-        self._run_backing_git(
-            "update-ref",
-            f"refs/heads/{pr.head_ref}",
-            rewritten,
-        )
-        pr.head_sha = rewritten
-        return rewritten
-
-    def _tree_with_file(self, tree: str, *, path: str, contents: str) -> str:
-        blob = self._run_backing_git("hash-object", "-w", "--stdin", stdin=contents)
-        entries = "\n".join(
-            entry
-            for entry in self._run_backing_git("ls-tree", tree).splitlines()
-            if entry.partition("\t")[2] != path
-        )
-        return self._run_backing_git(
-            "mktree",
-            stdin=f"{entries}\n100644 blob {blob}\t{path}\n",
-        )
-
-    def force_push_pr_head(self, pr: FakeGithubPR) -> str:
-        """Rewrite one PR head externally while preserving its jj change ID."""
-
-        head = self.ref_target(pr.head_ref)
-        if head is None:
-            raise AssertionError(f"Missing fake GitHub branch {pr.head_ref}")
-        parent = self._run_backing_git("rev-parse", f"{head}^")
-        rewritten = self._replay_commit(
-            commit_id=head,
-            extra_header="x-fake-force-push true",
-            message_suffix="\nexternal rewrite",
-            parent_commit_id=parent,
-        )
-        self._run_backing_git(
-            "update-ref",
-            f"refs/heads/{pr.head_ref}",
-            rewritten,
-        )
-        pr.head_sha = rewritten
-        return rewritten
-
-    def _replay_commit(
-        self,
-        *,
-        commit_id: str,
-        drop_change_id: bool = False,
-        extra_header: str,
-        message_suffix: str = "",
-        parent_commit_id: str,
-        tree_id: str | None = None,
-    ) -> str:
-        """Replay the commit's delta onto its new parent unless a replacement tree is supplied."""
-
-        raw_commit = self._run_backing_git("cat-file", "commit", commit_id)
-        headers, separator, message = raw_commit.partition("\n\n")
-        if tree_id is None:
-            old_parent = next(
-                line.removeprefix("parent ")
-                for line in headers.splitlines()
-                if line.startswith("parent ")
-            )
-            tree_id = self._run_backing_git(
-                "merge-tree",
-                "--write-tree",
-                f"--merge-base={old_parent}",
-                parent_commit_id,
-                commit_id,
-            ).splitlines()[0]
-        rewritten_headers = [
-            f"tree {tree_id}" if line.startswith("tree ") else line
-            for line in headers.splitlines()
-            if not line.startswith("parent ")
-            and not (drop_change_id and line.startswith("change-id "))
-        ]
-        rewritten_headers.insert(1, f"parent {parent_commit_id}")
-        rewritten_headers.append(extra_header)
-        return self._run_backing_git(
-            "hash-object",
-            "-t",
-            "commit",
-            "-w",
-            "--stdin",
-            stdin=f"{'\n'.join(rewritten_headers)}{separator}{message}{message_suffix}\n",
-        )
-
-    def _run_backing_git(
-        self,
-        *args: str,
-        env: dict[str, str] | None = None,
-        stdin: str | None = None,
-    ) -> str:
-        completed = subprocess.run(
-            ["git", "--git-dir", str(self.git_dir), *args],
-            capture_output=True,
-            check=False,
-            env=None if env is None else {**os.environ, **env},
-            input=None if stdin is None else stdin.encode("utf-8"),
-        )
-        stdout = completed.stdout.decode("utf-8")
-        stderr = completed.stderr.decode("utf-8")
-        if completed.returncode != 0:
-            raise AssertionError(
-                f"fake github git {args} failed:\nstdout={stdout}\nstderr={stderr}"
-            )
-        return stdout.strip()
-
-    def branch_heads(self) -> dict[str, str]:
-        """Read every branch target in one git invocation."""
-
-        completed = subprocess.run(
-            ["git", "--git-dir", str(self.git_dir), "show-ref", "--heads"],
-            capture_output=True,
-            check=False,
-            text=True,
-        )
-        if completed.returncode != 0:
-            return {}
-        heads: dict[str, str] = {}
-        for line in completed.stdout.splitlines():
-            commit_id, _, ref_name = line.partition(" ")
-            if ref_name.startswith("refs/heads/"):
-                heads[ref_name.removeprefix("refs/heads/")] = commit_id
-        return heads
-
-    def is_ancestor(self, ancestor_commit: str, descendant_commit: str) -> bool:
-        completed = subprocess.run(
-            [
-                "git",
-                "--git-dir",
-                str(self.git_dir),
-                "merge-base",
-                "--is-ancestor",
-                ancestor_commit,
-                descendant_commit,
-            ],
-            capture_output=True,
-            check=False,
-            text=True,
-        )
-        return completed.returncode == 0
 
     def list_pr_reviews(self, pr_number: int) -> list[FakeGithubPRReview]:
         self._require_issue_number(pr_number)
@@ -1499,26 +1044,8 @@ def initialize_bare_repo(
 ) -> FakeGithubRepo:
     """Create a bare Git repo that the fake server can expose."""
 
-    owner_dir = root_dir / owner
-    owner_dir.mkdir(parents=True, exist_ok=True)
-    git_dir = owner_dir / f"{name}.git"
-
-    subprocess.run(
-        ["git", "init", "--bare", str(git_dir)],
-        capture_output=True,
-        check=True,
-        text=True,
-    )
-    subprocess.run(
-        ["git", "symbolic-ref", "HEAD", "refs/heads/main"],
-        capture_output=True,
-        check=True,
-        cwd=git_dir,
-        text=True,
-    )
-
     return FakeGithubRepo(
-        git_dir=git_dir,
+        git_dir=initialize_bare_git_dir(root_dir, namespace=owner, name=name),
         name=name,
         owner=owner,
     )
@@ -1669,7 +1196,7 @@ def _stack_pr_payload(
     pr_number: int,
 ) -> dict[str, object]:
     pr = repo.prs[pr_number]
-    pr._refresh_head_sha(repo)
+    repo.refresh_head(pr)
     return {
         "head": {"ref": pr.head_ref, "sha": pr.head_sha},
         "merged_at": pr.merged_at,
