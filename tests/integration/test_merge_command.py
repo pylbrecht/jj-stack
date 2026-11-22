@@ -414,6 +414,41 @@ def test_merge_queue_lookup_failure_stops_before_requesting_a_merge(
     assert_output_contains(captured.err, "uses a merge queue", "could not inspect main")
 
 
+def test_merge_stops_before_any_mutation_on_a_forge_without_github_stacks(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    repo, fake_repo = init_fake_github_repo_with_submitted_stack(tmp_path, size=2)
+    config_path = configure_submit_environment(monkeypatch, tmp_path, fake_repo)
+    fake_repo.github_stacks = {7: (1, 2)}
+    state_store = TrackingStore.for_repo(repo)
+    state_before = state_store.load()
+    refs_before = remote_refs(fake_repo.git_dir)
+
+    class NoStacksClient(GithubClient):
+        @property
+        def stacks(self) -> None:
+            return None
+
+    patch_github_client_builders(
+        monkeypatch,
+        app=create_app(fake_repo),
+        fake_repo=fake_repo,
+        client_type=NoStacksClient,
+    )
+
+    exit_code = run_main(repo, config_path, "merge")
+    captured = capsys.readouterr()
+
+    assert exit_code == 1, (captured.out, captured.err)
+    assert_output_contains(captured.err, "merge is not supported on this forge yet")
+    assert fake_repo.stack_merge_requests == []
+    assert all(pr.state == "open" for pr in fake_repo.prs.values())
+    assert remote_refs(fake_repo.git_dir) == refs_before
+    assert state_store.load() == state_before
+
+
 def test_merge_draft_blocks_the_candidate_prefix(
     tmp_path: Path,
     monkeypatch,
