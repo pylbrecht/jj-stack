@@ -32,6 +32,8 @@ from jj_stack.forge.github.models import (
     GithubStackMergeSubmission,
 )
 from jj_stack.forge.github.resolution import GithubRepoAddress
+from jj_stack.forge.github.stack_merge import GithubStackMergeRequest, plan_stack_merge
+from jj_stack.forge.merge import MergeExecutionInputs, MergePlan
 from jj_stack.forge.models import (
     MergeDetails,
     PRComment,
@@ -43,6 +45,7 @@ from jj_stack.forge.models import (
 )
 from jj_stack.forge.protocol import Forge, StackObjects
 from jj_stack.identifiers import CommitId
+from jj_stack.models.stack import LocalCommit
 from jj_stack.timing import timed
 
 logger = logging.getLogger(__name__)
@@ -1027,6 +1030,32 @@ class GithubClient:
             model=_GraphqlPRMutationResult,
             error_context=f"GitHub {response_name} response had invalid mutation data",
         ).pull_request
+
+    def plan_stack_merge(
+        self,
+        *,
+        plan: MergePlan,
+        github_stacks: tuple[GithubStack, ...],
+        execution: MergeExecutionInputs,
+        changes: Sequence[LocalCommit],
+        repo_state: Repo,
+        uses_merge_queue: bool,
+        configured_method: MergeMethod | None,
+        merge_method: MergeMethod | None,
+        warn_ignored_method: bool,
+    ) -> GithubStackMergeRequest:
+        return plan_stack_merge(
+            self,
+            plan=plan,
+            github_stacks=github_stacks,
+            execution=execution,
+            changes=changes,
+            repo_state=repo_state,
+            uses_merge_queue=uses_merge_queue,
+            configured_method=configured_method,
+            merge_method=merge_method,
+            warn_ignored_method=warn_ignored_method,
+        )
 
     async def base_branch_uses_merge_queue(self, *, branch: str) -> bool:
         observed = await self._graphql_repo(

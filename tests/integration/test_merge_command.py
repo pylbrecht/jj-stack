@@ -6,12 +6,12 @@ from pathlib import Path
 import pytest
 
 from jj_stack.commands.merge import command as merge_command
-from jj_stack.commands.merge.checks import ChecksPending
-from jj_stack.commands.merge.github_stack import PendingMerge
 from jj_stack.errors import EXIT_FORGE, CliError
 from jj_stack.forge.errors import ForgeError
 from jj_stack.forge.github.client import GithubClient
 from jj_stack.forge.github.overview_comments import STACK_OVERVIEW_COMMENT_MARKER
+from jj_stack.forge.github.stack_merge import PendingMerge
+from jj_stack.forge.merge import ChecksPending
 from jj_stack.jj.client import JjClient
 from jj_stack.state.operation_lock import try_acquire_operation_lock
 from jj_stack.state.store import TrackingStore
@@ -56,7 +56,7 @@ def test_merge_waits_for_required_checks_before_requesting_and_syncs(
     fake_repo.branch_rules["main"] = FakeMergeRequirements(checks=("build", "test"))
     fake_repo.prs[1].checks = {"build": "SUCCESS", "optional": "FAILURE"}
     fake_repo.prs[2].checks = {"build": "IN_PROGRESS", "test": "SUCCESS"}
-    monkeypatch.setattr("jj_stack.commands.merge.wait._QUEUE_POLL_INTERVAL_SECONDS", 0)
+    monkeypatch.setattr("jj_stack.forge.github.stack_merge_wait._QUEUE_POLL_INTERVAL_SECONDS", 0)
     state_store = TrackingStore.for_repo(repo)
     before = state_store.load()
     waits = 0
@@ -230,7 +230,7 @@ def test_merge_no_wait_resumes_a_pending_or_queued_request_and_syncs_after_waiti
 
     # While GitHub works through its queue, other jj-stack commands can still run: each queue
     # observation finds the repo's operation lock free. The local update afterwards holds it.
-    monkeypatch.setattr("jj_stack.commands.merge.wait._QUEUE_POLL_INTERVAL_SECONDS", 0)
+    monkeypatch.setattr("jj_stack.forge.github.stack_merge_wait._QUEUE_POLL_INTERVAL_SECONDS", 0)
     state_dir = TrackingStore.for_repo(repo).path.parent
 
     def lock_is_free() -> bool:
@@ -280,7 +280,7 @@ def test_merge_reports_a_queue_ejection_and_the_documented_recovery_completes(
     config_path = configure_submit_environment(monkeypatch, tmp_path, fake_repo)
     fake_repo.github_stacks = {7: (1, 2)}
     fake_repo.merge_queue_enabled = True
-    monkeypatch.setattr("jj_stack.commands.merge.wait._QUEUE_POLL_INTERVAL_SECONDS", 0)
+    monkeypatch.setattr("jj_stack.forge.github.stack_merge_wait._QUEUE_POLL_INTERVAL_SECONDS", 0)
     state_store = TrackingStore.for_repo(repo)
     bottom, top = selected_stack(repo).changes
     head = top.change_id
@@ -412,6 +412,41 @@ def test_merge_queue_lookup_failure_stops_before_requesting_a_merge(
     assert fake_repo.stack_merge_requests == []
     assert fake_repo.prs[1].merged_at is None
     assert_output_contains(captured.err, "uses a merge queue", "could not inspect main")
+
+
+def test_merge_stops_before_any_mutation_on_a_forge_without_github_stacks(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    repo, fake_repo = init_fake_github_repo_with_submitted_stack(tmp_path, size=2)
+    config_path = configure_submit_environment(monkeypatch, tmp_path, fake_repo)
+    fake_repo.github_stacks = {7: (1, 2)}
+    state_store = TrackingStore.for_repo(repo)
+    state_before = state_store.load()
+    refs_before = remote_refs(fake_repo.git_dir)
+
+    class NoStacksClient(GithubClient):
+        @property
+        def stacks(self) -> None:
+            return None
+
+    patch_github_client_builders(
+        monkeypatch,
+        app=create_app(fake_repo),
+        fake_repo=fake_repo,
+        client_type=NoStacksClient,
+    )
+
+    exit_code = run_main(repo, config_path, "merge")
+    captured = capsys.readouterr()
+
+    assert exit_code == 1, (captured.out, captured.err)
+    assert_output_contains(captured.err, "merge is not supported on this forge yet")
+    assert fake_repo.stack_merge_requests == []
+    assert all(pr.state == "open" for pr in fake_repo.prs.values())
+    assert remote_refs(fake_repo.git_dir) == refs_before
+    assert state_store.load() == state_before
 
 
 def test_merge_draft_blocks_the_candidate_prefix(
@@ -576,8 +611,8 @@ def test_merge_update_waits_while_github_reports_an_old_head_for_a_rewritten_bra
     converge = merge_command.converge_selected_stack
     attempts: list[str] = []
 
-    async def merge_then_lag(self, github):
-        result = await wait(self, github)
+    async def merge_then_lag(self):
+        result = await wait(self)
         fake_repo.prs[2].lagging_head = stack.head.commit_id
         return result
 
@@ -623,8 +658,8 @@ def test_merge_finishes_when_another_sync_already_cleaned_up_the_stack(
     sync_exit_codes: list[int] = []
 
     # Another terminal syncs as soon as GitHub reports the merge, before merge's own update.
-    async def wait_then_sync_elsewhere(self, github):
-        result = await wait(self, github)
+    async def wait_then_sync_elsewhere(self):
+        result = await wait(self)
         sync_exit_codes.append(
             await asyncio.to_thread(run_main, repo, config_path, "sync", head_change_id)
         )

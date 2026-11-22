@@ -2,20 +2,14 @@
 
 from __future__ import annotations
 
-import asyncio
-from dataclasses import dataclass
-
-import jj_stack.console as console
 import jj_stack.ui as ui
 from jj_stack.errors import CliError
-from jj_stack.forge.github.client import GithubClient
-from jj_stack.forge.github.error_messages import read_or_stop
+from jj_stack.forge.errors import ForgeError
+from jj_stack.forge.merge import ChecksPending, MergeChange
 from jj_stack.forge.models import Check, MergeDetails, PullRequest
+from jj_stack.forge.protocol import Forge
 from jj_stack.formatting import format_pr_number
 
-from .plan import MergeChange
-
-_CHECK_POLL_INTERVAL_SECONDS = 10.0
 _PASSED = {"SUCCESS", "NEUTRAL", "SKIPPED"}
 _FAILED = {
     "FAILURE",
@@ -28,30 +22,21 @@ _FAILED = {
 }
 
 
-@dataclass(frozen=True, slots=True)
-class ChecksPending:
-    changes: tuple[MergeChange, ...]
-    progress: tuple[str, ...]
-
-    async def wait(self) -> None:
-        """Wait without holding the repo lock; the caller must replan before mutating."""
-
-        with console.spinner(description="Waiting for required checks"):
-            await asyncio.sleep(_CHECK_POLL_INTERVAL_SECONDS)
-
-
 async def inspect_required_checks(
-    github: GithubClient, changes: tuple[MergeChange, ...], prs: tuple[PullRequest, ...]
+    github: Forge, changes: tuple[MergeChange, ...], prs: tuple[PullRequest, ...]
 ) -> ChecksPending | None:
     # Once queued, GitHub tests temporary merge-group commits and owns the queue decision.
     unqueued = tuple(pr for pr in prs if not pr.queued)
     if not unqueued:
         return None
-    details = await read_or_stop(
-        github.get_pr_merge_details(prs=unqueued),
-        message="Could not inspect required checks before merging.",
-        hint="Resolve the GitHub error, then rerun jj-stack merge.",
-    )
+    try:
+        details = await github.get_pr_merge_details(prs=unqueued)
+    except ForgeError as error:
+        raise CliError(
+            "Could not inspect required checks before merging.",
+            hint="Resolve the GitHub error, then rerun jj-stack merge.",
+        ) from error
+
     pending: list[str] = []
     for pr in unqueued:
         progress = details.get(pr.number)
