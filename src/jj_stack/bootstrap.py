@@ -18,6 +18,7 @@ from jj_stack.forge.github.resolution import GithubRepoAddress
 from jj_stack.forge.gitlab.client import GitlabClient
 from jj_stack.forge.gitlab.resolution import GitlabProjectAddress
 from jj_stack.forge.gitlab.transport import GlabTransport, run_subprocess
+from jj_stack.forge.vocabulary import install_forge_vocabulary
 from jj_stack.jj.cli_args import JjCliArgs
 from jj_stack.jj.client import JjClient
 from jj_stack.jj.settings import read_jj_settings
@@ -113,6 +114,7 @@ def bootstrap_context(
         )
 
     install_pr_branch_namespace(config.branch_prefix)
+    install_forge_vocabulary(config.forge)
     if snapshot_working_copy:
         jj_client.enable_initial_working_copy_snapshot()
     configure_logging(debug=options.debug, configured_level=config.logging.level)

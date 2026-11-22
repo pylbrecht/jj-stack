@@ -38,8 +38,9 @@ from jj_stack.commands.view_details import (
     render_merge_details,
 )
 from jj_stack.errors import EXIT_INCOMPLETE, CliError, UnsupportedStackError, error_message
-from jj_stack.forge.github.error_messages import remote_and_github_unavailable_messages
 from jj_stack.forge.protocol import RepoAddress
+from jj_stack.forge.target import forge_unavailable_messages
+from jj_stack.forge.vocabulary import forge_name, forge_vocabulary
 from jj_stack.formatting import (
     format_pr_label,
     render_commit_blocks,
@@ -121,7 +122,7 @@ def _run_status(
         selections = _prepare_status_selections(context=context, selectors=selectors)
     else:
         selections = ((None, _prepare_status_with_spinner(context=context, revset=None), ()),)
-    with console.spinner(description="Inspecting GitHub"):
+    with console.spinner(description=f"Inspecting {forge_name()}"):
         pr_lookups = observe_status(
             context=context,
             verbose=verbose,
@@ -326,15 +327,15 @@ def _status_heading(selector: ViewSelector) -> ui.Message:
 
 
 def _warn_about_unavailable_github(result: StatusResult) -> tuple[ui.Message, ...]:
-    """Explain an unreachable remote or GitHub target on stderr in every output mode.
+    """Explain an unreachable remote or forge target on stderr in every output mode.
 
     A `--json` caller reads a well-formed payload on stdout, so the reason for a non-zero
     exit code has nowhere to go but stderr.
     """
 
-    lines = remote_and_github_unavailable_messages(
-        github_error=result.github_error,
-        github_repo=result.github_repo,
+    lines = forge_unavailable_messages(
+        forge_error=result.forge_error,
+        repo=result.forge_repo,
         remote=result.remote,
         remote_error=result.remote_error,
     )
@@ -432,7 +433,7 @@ def render_status_summary_lines(
         verbose=verbose,
         renderer=lambda change: _render_summary_change_lines(
             change=change,
-            repo=result.github_repo,
+            repo=result.forge_repo,
             prerendered_blocks=prerendered_blocks,
         ),
     )
@@ -445,7 +446,7 @@ def render_status_summary_lines(
         verbose=verbose,
         renderer=lambda change: _render_summary_change_lines(
             change=change,
-            repo=result.github_repo,
+            repo=result.forge_repo,
             prerendered_blocks=prerendered_blocks,
         ),
     )
@@ -565,6 +566,7 @@ def render_status_advisory_lines(
         return ()
 
     head = short_change_id(result.changes[0].change_id)
+    pr = forge_vocabulary().pr_noun
     rows: list[tuple[ui.TableCell, ui.TableCell]] = []
     if submitted_disagreements:
         rows.append(
@@ -610,7 +612,7 @@ def render_status_advisory_lines(
             (
                 "Sync needed",
                 "Merged changes remain in local history. Run jj-stack sync to update the "
-                "stack and any remaining PRs",
+                f"stack and any remaining {pr}s",
             )
         )
         rows.append(
@@ -643,10 +645,10 @@ def render_status_advisory_lines(
     if closed_changes:
         rows.append(
             (
-                "Closed GitHub PR" if len(closed_changes) == 1 else "Closed GitHub PRs",
+                f"Closed {forge_name()} {pr}{'' if len(closed_changes) == 1 else 's'}",
                 (
-                    "Reopen the PR on GitHub to continue using it, link an open replacement "
-                    "with jj-stack relink, or clean up with ",
+                    f"Reopen the {pr} on {forge_name()} to continue using it, link an open "
+                    "replacement with jj-stack relink, or clean up with ",
                     ui.cmd(f"jj-stack cleanup {head}"),
                     " before submitting again.",
                 ),

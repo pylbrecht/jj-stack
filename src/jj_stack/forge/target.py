@@ -8,7 +8,10 @@ import jj_stack.forge.github.resolution as github_resolution
 import jj_stack.ui as ui
 from jj_stack.errors import CliError, ErrorMessage, error_message
 from jj_stack.forge.github.resolution import GithubRepoAddress
+from jj_stack.forge.protocol import RepoAddress
+from jj_stack.forge.vocabulary import forge_name
 from jj_stack.models.git import GitRemote
+from jj_stack.ui import Message
 
 
 @dataclass(frozen=True, slots=True)
@@ -86,6 +89,27 @@ def require_forge_target(target: ForgeTarget | UnresolvedForgeTarget) -> ForgeTa
         return target
     raise CliError(
         target.remote_error or target.repo_error or "No Git remote is configured.",
-        hint=t"Configure one GitHub remote, then rerun. "
+        hint=t"Configure one {forge_name()} remote, then rerun. "
         t"{ui.cmd('jj-stack doctor')} reports what it found.",
     )
+
+
+def forge_unavailable_messages(
+    *,
+    forge_error: Message | None,
+    repo: RepoAddress | None,
+    remote: GitRemote | None,
+    remote_error: Message | None,
+) -> tuple[Message, ...]:
+    """Render the repo-level warning lines for an unavailable remote or forge target."""
+
+    messages: list[Message] = []
+    if remote is None:
+        messages.append("No Git remote is configured." if remote_error is None else remote_error)
+    if forge_error is not None:
+        unavailable = f"{forge_name()} unavailable"
+        if repo is None:
+            messages.append((f"{unavailable}: ", forge_error))
+        else:
+            messages.append((f"{unavailable} for ", ui.code(repo.full_name), ": ", forge_error))
+    return tuple(messages)

@@ -7,6 +7,7 @@ import sys
 import jj_stack.ui as ui
 from jj_stack.console import color_when
 from jj_stack.forge.protocol import RepoAddress
+from jj_stack.forge.vocabulary import forge_vocabulary
 from jj_stack.identifiers import CommitId
 from jj_stack.jj.client import JjClient, RenderableCommit
 
@@ -29,14 +30,14 @@ def format_pr_number(
     """Render a pull request number, linking it when its repo or URL is known."""
 
     url = pr_url(pr_number, repo=repo, url=url)
-    text = f"#{pr_number}"
+    text = f"{forge_vocabulary().pr_sigil}{pr_number}"
     return ui.hyperlink(text, url) if url is not None else text
 
 
 def format_pr_label(
     pr_number: int,
     *,
-    include_hash: bool = True,
+    include_sigil: bool = True,
     is_draft: bool = False,
     prefix: str = "",
     repo: RepoAddress | None = None,
@@ -45,7 +46,8 @@ def format_pr_label(
     """Render a pull request label for CLI output."""
 
     url = pr_url(pr_number, repo=repo, url=url)
-    text = f"PR {'#' if include_hash else ''}{pr_number}"
+    vocabulary = forge_vocabulary()
+    text = f"{vocabulary.pr_noun} {vocabulary.pr_sigil if include_sigil else ''}{pr_number}"
     label: ui.Message = ui.hyperlink(text, url) if url is not None else text
     if is_draft:
         label = ("draft ", label)

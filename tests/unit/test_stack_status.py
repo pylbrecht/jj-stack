@@ -61,10 +61,10 @@ def test_shared_github_failure_leaves_untracked_stack_complete(monkeypatch) -> N
     result = build_status_result(prepared=prepared, pr_lookups=observation)
     local_result = build_status_result(prepared=local, pr_lookups=observation)
 
-    assert result.github_error == "GitHub lookup failed"
+    assert result.forge_error == "GitHub lookup failed"
     assert result.incomplete is True
     assert result.changes[0].branch == "jj-stack/feature-1-aaaaaaaa"
-    assert local_result.github_error is None
+    assert local_result.forge_error is None
     assert local_result.incomplete is False
 
 

@@ -8,6 +8,7 @@ from typing import Literal
 
 import jj_stack.ui as ui
 from jj_stack.forge.models import CheckRollupStatus, PullRequest
+from jj_stack.forge.vocabulary import forge_name, forge_vocabulary
 from jj_stack.identifiers import ChangeId, short_change_id
 from jj_stack.stack.change_state import (
     BranchClaimed,
@@ -157,7 +158,7 @@ def moved_pr_branch_advice(step: ui.Message, *, command: str) -> ui.Message:
     """Explain what the command named in `step` does with a PR branch that moved."""
 
     return (
-        t"{step}. If GitHub rewrote a PR branch while merging or rebasing the stack, "
+        t"{step}. If {forge_name()} rewrote a PR branch while merging or rebasing the stack, "
         t"{ui.cmd(command)} updates it; if someone else pushed work to it, "
         t"{ui.cmd(command)} stops and explains what to do"
     )
@@ -229,18 +230,21 @@ _STATUS_LABELS: dict[ReportStatus, tuple[str, str, str | None]] = {
     "review_required": ("needs review", "need review", "hint"),
     "merged": ("sync needed", "merged, sync needed", "warning"),
     "closed": ("closed", "closed", "warning"),
-    "missing": ("missing PR", "missing PRs", "warning"),
-    "ambiguous": ("ambiguous PR", "ambiguous PRs", "warning"),
-    "link_mismatch": ("saved PR needs repair", "saved PRs need repair", "warning"),
+    "missing": ("missing {pr}", "missing {pr}s", "warning"),
+    "ambiguous": ("ambiguous {pr}", "ambiguous {pr}s", "warning"),
+    "link_mismatch": ("saved {pr} needs repair", "saved {pr}s need repair", "warning"),
     "branch_moved": ("PR branch moved", "PR branches moved", "warning"),
     "divergent": ("divergent", "divergent changes", "warning"),
-    "unknown": ("GitHub lookup failed", "GitHub lookups failed", "warning"),
+    "unknown": ("{forge} lookup failed", "{forge} lookups failed", "warning"),
 }
 
 
 def status_label(status: ReportStatus, *, count: int = 1) -> str | ui.SemanticText:
     singular, plural, severity = _STATUS_LABELS[status]
-    label = singular if count == 1 else f"{count} {plural}"
+    vocabulary = forge_vocabulary()
+    label = (singular if count == 1 else f"{count} {plural}").format(
+        forge=vocabulary.forge_name, pr=vocabulary.pr_noun
+    )
     return label if severity is None else ui.semantic_text(label, severity, "heading")
 
 

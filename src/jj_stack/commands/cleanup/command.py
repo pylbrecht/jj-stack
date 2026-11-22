@@ -47,13 +47,17 @@ from jj_stack.errors import (
     error_message,
 )
 from jj_stack.forge.errors import ForgeError
-from jj_stack.forge.github.error_messages import remote_and_github_unavailable_messages
 from jj_stack.forge.github.models import GithubStack
 from jj_stack.forge.github.overview_comments import STACK_OVERVIEW_COMMENT_MARKER
 from jj_stack.forge.github.run import GithubRun
 from jj_stack.forge.models import PRComment, PullRequest, Repo
 from jj_stack.forge.protocol import Forge
-from jj_stack.forge.target import ForgeTarget, UnresolvedForgeTarget, resolve_forge_target
+from jj_stack.forge.target import (
+    ForgeTarget,
+    UnresolvedForgeTarget,
+    forge_unavailable_messages,
+    resolve_forge_target,
+)
 from jj_stack.formatting import format_pr_label
 from jj_stack.identifiers import ChangeId, short_change_id
 from jj_stack.jj.client import PRRefUpdate
@@ -150,9 +154,9 @@ def _run_cleanup_command(prepared_cleanup: PreparedCleanup) -> int:
 
     github_target = prepared_cleanup.github_target
     if prepared_cleanup.candidates and isinstance(github_target, UnresolvedForgeTarget):
-        for message in remote_and_github_unavailable_messages(
-            github_error=github_target.repo_error,
-            github_repo=None,
+        for message in forge_unavailable_messages(
+            forge_error=github_target.repo_error,
+            repo=None,
             remote=github_target.remote,
             remote_error=github_target.remote_error,
         ):

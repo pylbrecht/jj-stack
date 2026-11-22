@@ -31,9 +31,14 @@ from jj_stack.commands._json_status import (
 )
 from jj_stack.console import color_when
 from jj_stack.errors import EXIT_INCOMPLETE, CliError, ErrorMessage, error_message
-from jj_stack.forge.github.error_messages import remote_and_github_unavailable_messages
 from jj_stack.forge.protocol import RepoAddress
-from jj_stack.forge.target import ForgeTarget, UnresolvedForgeTarget, resolve_forge_target
+from jj_stack.forge.target import (
+    ForgeTarget,
+    UnresolvedForgeTarget,
+    forge_unavailable_messages,
+    resolve_forge_target,
+)
+from jj_stack.forge.vocabulary import forge_name, forge_vocabulary
 from jj_stack.formatting import format_pr_label, pr_url
 from jj_stack.identifiers import ChangeId, short_change_id
 from jj_stack.stack.change_state import (
@@ -114,7 +119,7 @@ def _run_list(
         if state.prs
         else UnresolvedForgeTarget()
     )
-    github_repo = github_target.repo if isinstance(github_target, ForgeTarget) else None
+    forge_repo = github_target.repo if isinstance(github_target, ForgeTarget) else None
     current_heads = frozenset(
         stack.head.commit_id
         for stack in discovered
@@ -142,8 +147,8 @@ def _run_list(
         for branch, change_ids in sorted(duplicate_branches.items()):
             console.warning(
                 t"PR branch {ui.bookmark(branch)} is saved for changes "
-                t"{ui.join(ui.change_id, change_ids)}. Live GitHub details for those changes "
-                t"were not inspected."
+                t"{ui.join(ui.change_id, change_ids)}. Live {forge_name()} details for those "
+                t"changes were not inspected."
             )
         prepared_stacks = tuple(
             PreparedLocalStack(
@@ -154,23 +159,23 @@ def _run_list(
             )
             for stack in ordered
         )
-        with console.spinner(description="Inspecting GitHub"):
+        with console.spinner(description=f"Inspecting {forge_name()}"):
             lookups = observe_status(
                 context=context,
                 prepared=prepared_stacks,
                 exclude_branches=duplicate_branch_names,
             )
-        github_error = error_message(lookups) if isinstance(lookups, CliError) else None
-        for message in remote_and_github_unavailable_messages(
-            github_error=github_target.repo_error or github_error,
-            github_repo=github_repo,
+        forge_error = error_message(lookups) if isinstance(lookups, CliError) else None
+        for message in forge_unavailable_messages(
+            forge_error=github_target.repo_error or forge_error,
+            repo=forge_repo,
             remote=github_target.remote,
             remote_error=github_target.remote_error,
         ):
             console.warning(message, soft_wrap=False)
         rows = tuple(
             _build_row(
-                github_repo=github_repo,
+                forge_repo=forge_repo,
                 is_current=prepared.stack.head.commit_id in current_heads,
                 prepared_stack=prepared,
                 pr_lookups=lookups,
@@ -189,7 +194,7 @@ def _run_list(
         )
     console.output(
         _stack_table(
-            github_repo=github_repo,
+            forge_repo=forge_repo,
             orphans=orphans,
             rendered_change_ids=rendered_change_ids,
             rows=rows,
@@ -248,7 +253,10 @@ def _emit_orphan_hint(orphans: tuple[OrphanedRecord, ...]) -> None:
     if not orphans:
         return
     command = ui.cmd("jj-stack cleanup --pull-request orphans --close")
-    console.note(t"To close orphaned PRs and clean up, run {command}; add --dry-run to preview.")
+    prs = f"{forge_vocabulary().pr_noun}s"
+    console.note(
+        t"To close orphaned {prs} and clean up, run {command}; add --dry-run to preview."
+    )
 
 
 def _emit_divergence_hints(rows: tuple[StackRow, ...]) -> None:
@@ -297,7 +305,7 @@ def _emit_stale_stacks_advisory(rows: tuple[StackRow, ...]) -> None:
 
 def _build_row(
     *,
-    github_repo: RepoAddress | None,
+    forge_repo: RepoAddress | None,
     is_current: bool,
     prepared_stack: PreparedLocalStack,
     pr_lookups: dict[str, ChangeObservation] | CliError,
@@ -308,7 +316,7 @@ def _build_row(
     changes = result.changes[::-1]
     state = _state_from_status(
         conflicted=any(change.conflict for change in stack.changes),
-        github_error=result.github_error,
+        forge_error=result.forge_error,
         remote_error=result.remote_error,
         states=tuple(change.state for change in changes),
     )
@@ -320,7 +328,7 @@ def _build_row(
         ),
         head_change_id=stack.head.change_id,
         incomplete=result.incomplete,
-        size=_format_size(len(stack.changes), changes, repo=github_repo),
+        size=_format_size(len(stack.changes), changes, repo=forge_repo),
         state=state,
         subject=stack.head.subject,
     )
@@ -329,14 +337,14 @@ def _build_row(
 def _state_from_status(
     *,
     conflicted: bool,
-    github_error: ErrorMessage | None,
+    forge_error: ErrorMessage | None,
     remote_error: ErrorMessage | None,
     states: tuple[ChangeState, ...],
 ) -> ui.Message:
     fragments = (
         *((ui.semantic_text("conflicted", "error", "heading"),) if conflicted else ()),
         *_status_fragments(
-            github_error=github_error,
+            forge_error=forge_error,
             remote_error=remote_error,
             states=states,
         ),
@@ -346,13 +354,13 @@ def _state_from_status(
 
 def _status_fragments(
     *,
-    github_error: ErrorMessage | None,
+    forge_error: ErrorMessage | None,
     remote_error: ErrorMessage | None,
     states: tuple[ChangeState, ...],
 ) -> tuple[ui.Message, ...]:
     fragments: list[ui.Message] = []
-    if github_error is not None or remote_error is not None:
-        fragments.append(ui.semantic_text("GitHub unavailable", "warning", "heading"))
+    if forge_error is not None or remote_error is not None:
+        fragments.append(ui.semantic_text(f"{forge_name()} unavailable", "warning", "heading"))
 
     # Changes run from the bottom up, so each fragment links the lowest PR it applies to.
     entries = tuple(
@@ -448,19 +456,19 @@ def _format_pr_summary(
         number, url = references[0]
         return format_pr_label(
             number,
-            include_hash=False,
+            include_sigil=False,
             repo=repo,
             url=url,
         )
     number, url = references[-1]
     url = pr_url(number, repo=repo, url=url)
-    text = f"{len(references)} PRs"
+    text = forge_vocabulary().pr_count(len(references))
     return ui.hyperlink(text, url) if url is not None else text
 
 
 def _stack_table(
     *,
-    github_repo: RepoAddress | None,
+    forge_repo: RepoAddress | None,
     orphans: tuple[OrphanedRecord, ...],
     rendered_change_ids: dict[ChangeId, str],
     rows: tuple[StackRow, ...],
@@ -478,7 +486,7 @@ def _stack_table(
         stack_table_rows.append(
             (
                 rendered_change_ids[orphan.change_id],
-                format_pr_label(orphan.pr_identity.pr_number, repo=github_repo),
+                format_pr_label(orphan.pr_identity.pr_number, repo=forge_repo),
                 _ORPHAN_STATE,
                 t"{_ORPHAN_SUBJECT}",
             )

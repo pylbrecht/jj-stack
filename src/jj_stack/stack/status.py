@@ -1,4 +1,4 @@
-"""Stack status preparation and GitHub inspection helpers."""
+"""Stack status preparation and forge inspection helpers."""
 
 from __future__ import annotations
 
@@ -16,6 +16,7 @@ from jj_stack.forge.github.resolution import GithubRepoAddress
 from jj_stack.forge.models import PRProgress, PullRequest
 from jj_stack.forge.protocol import Forge, RepoAddress
 from jj_stack.forge.target import ForgeTarget
+from jj_stack.forge.vocabulary import forge_name
 from jj_stack.identifiers import ChangeId, CommitId
 from jj_stack.models.git import GitRemote
 from jj_stack.models.stack import LocalCommit
@@ -71,8 +72,8 @@ class StackStatusChange:
 class StatusResult:
     """Status result for one selected local stack."""
 
-    github_error: ErrorMessage | None
-    github_repo: RepoAddress | None
+    forge_error: ErrorMessage | None
+    forge_repo: RepoAddress | None
     incomplete: bool
     remote: GitRemote | None
     remote_error: ErrorMessage | None
@@ -105,7 +106,7 @@ def observe_status(
         return asyncio.run(
             lookup_pr_lookups_async(
                 context=context,
-                github_repo=target.repo,
+                forge_repo=target.repo,
                 observations=observations,
                 verbose=verbose,
             )
@@ -120,15 +121,15 @@ def build_status_result(
     prepared: PreparedLocalStack,
     pr_lookups: dict[str, ChangeObservation] | CliError,
 ) -> StatusResult:
-    """Classify one local stack using the shared GitHub observation."""
+    """Classify one local stack using the shared forge observation."""
 
     target = prepared.github_target
-    github_repo = target.repo if isinstance(target, ForgeTarget) else None
-    github_error = target.repo_error
+    forge_repo = target.repo if isinstance(target, ForgeTarget) else None
+    forge_error = target.repo_error
     if isinstance(pr_lookups, CliError) and any(
         change.change_id in prepared.state.prs for change in prepared.stack.changes
     ):
-        github_error = error_message(pr_lookups)
+        forge_error = error_message(pr_lookups)
     lookups = {} if isinstance(pr_lookups, CliError) else pr_lookups
     changes: list[StackStatusChange] = []
     for change in reversed(prepared.stack.changes):
@@ -140,8 +141,8 @@ def build_status_result(
             )
         changes.append(StackStatusChange(change=change, state=classify(observation)))
     return StatusResult(
-        github_error=github_error,
-        github_repo=github_repo,
+        forge_error=forge_error,
+        forge_repo=forge_repo,
         incomplete=any(report_incomplete(change.state) for change in changes),
         remote=target.remote,
         remote_error=target.remote_error,
@@ -165,13 +166,13 @@ def _local_observation(prepared: PreparedLocalStack, change: LocalCommit) -> Cha
 async def lookup_pr_lookups_async(
     *,
     context: CommandContext,
-    github_repo: GithubRepoAddress,
+    forge_repo: GithubRepoAddress,
     observations: Mapping[str, ChangeObservation],
     verbose: bool,
 ) -> dict[str, ChangeObservation]:
     """Look up the saved PR on each branch with a client for this repository."""
 
-    async with context.open_forge(repo=github_repo) as github_client:
+    async with context.open_forge(repo=forge_repo) as github_client:
         lookups = await discover_pr_lookups(
             github_client=github_client, observations=observations
         )
@@ -258,7 +259,7 @@ async def discover_pr_lookups(
         if error.kind in {"auth", "not_found", "rate_limited", "unavailable"}:
             raise CliError(
                 "",
-                hint=t"Run {ui.cmd('jj-stack doctor')} to check GitHub access.",
+                hint=t"Run {ui.cmd('jj-stack doctor')} to check {forge_name()} access.",
             ) from error
         lookup_error = f"pull request lookup: {error.user_facing_reason()}"
         return {

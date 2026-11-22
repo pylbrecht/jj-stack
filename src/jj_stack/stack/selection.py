@@ -12,6 +12,7 @@ from jj_stack.forge.pr_refs import (
 )
 from jj_stack.forge.protocol import RepoAddress
 from jj_stack.forge.target import select_submit_remote
+from jj_stack.forge.vocabulary import forge_name
 from jj_stack.formatting import format_pr_label
 from jj_stack.identifiers import ChangeId
 from jj_stack.jj.client import JjClient
@@ -79,7 +80,7 @@ def resolve_pr_reference(
         if pr_number is not None:
             return pr_number, None
         raise CliError(
-            t"Could not determine the GitHub repo for {ui.cmd('--pull-request')}; "
+            t"Could not determine the {forge_name()} repo for {ui.cmd('--pull-request')}; "
             t"use a pull request number or fix the selected remote.",
             hint=error.hint,
         ) from error
@@ -88,7 +89,7 @@ def resolve_pr_reference(
         if pr_number is not None:
             return pr_number, None
         raise CliError(
-            t"Could not determine the GitHub repo for {ui.cmd('--pull-request')}; "
+            t"Could not determine the {forge_name()} repo for {ui.cmd('--pull-request')}; "
             t"use a pull request number or fix the selected remote."
         )
 

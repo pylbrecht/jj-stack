@@ -50,6 +50,7 @@ from jj_stack.forge.pr_refs import (
 )
 from jj_stack.forge.protocol import Forge, RepoAddress
 from jj_stack.forge.target import select_submit_remote
+from jj_stack.forge.vocabulary import forge_name, forge_vocabulary
 from jj_stack.formatting import format_pr_label
 from jj_stack.identifiers import ChangeId, CommitId, short_change_id
 from jj_stack.jj.client import JjClient
@@ -102,8 +103,8 @@ def checkout(
     if result.fetched_tip_commit is not None:
         console.output(ui.PrefixedLine("Fetched PR head commit: ", result.fetched_tip_commit))
     if result.adopted_count:
-        noun = "PR" if result.adopted_count == 1 else "PRs"
-        console.output(f"Saved pull request links for {result.adopted_count} {noun}.")
+        count = forge_vocabulary().pr_count(result.adopted_count)
+        console.output(f"Saved pull request links for {count}.")
     elif result.stack.changes:
         console.output("Saved pull request links are already up to date for this stack.")
     else:
@@ -221,7 +222,8 @@ async def _checkout_pr_stack(
         raise CliError(
             t"{pr_label} and remote branch "
             t"{ui.bookmark(top_pr.head.ref)} no longer identify the same commit.",
-            hint="Retry in a moment; GitHub may still be catching up with a recent push.",
+            hint=f"Retry in a moment; {forge_name()} may still be catching up with a recent "
+            "push.",
         )
 
     # A hidden local copy of the head still needs the import so it becomes visible again.
@@ -335,6 +337,7 @@ async def _load_pr_chain(
 ) -> tuple[PullRequest, ...]:
     """Follow PR base branches from the selected PR to trunk."""
 
+    pr = forge_vocabulary().pr_noun
     namespace = current_pr_branch_namespace()
     top_down = [top]
     seen = {top.head.ref}
@@ -344,7 +347,7 @@ async def _load_pr_chain(
             raise CliError(
                 t"Pull request base branches point at each other in a loop, starting at "
                 t"{ui.bookmark(base)}.",
-                hint=t"Retarget one of those pull requests on GitHub so the stack has a "
+                hint=t"Retarget one of those pull requests on {forge_name()} so the stack has a "
                 t"bottom, then rerun {ui.cmd('jj-stack checkout')}.",
             )
         seen.add(base)
@@ -358,9 +361,9 @@ async def _load_pr_chain(
         if len(matches) != 1:
             raise CliError(
                 t"PR base branch {ui.bookmark(base)} must belong to one open pull request, "
-                t"but GitHub reports {len(matches)}.",
-                hint=t"Check the PR's base branch on GitHub. To link a known open PR to a "
-                t"local change, run {ui.cmd('jj-stack relink <pr> <change-id>')}.",
+                t"but {forge_name()} reports {len(matches)}.",
+                hint=t"Check the {pr}'s base branch on {forge_name()}. To link a known open {pr} "
+                t"to a local change, run {ui.cmd('jj-stack relink <pr> <change-id>')}.",
             )
         parent = matches[0]
         require_managed_pr_head(
@@ -382,10 +385,11 @@ def _save_checkout_tracking(
 ) -> int:
     changes = stack.changes[: len(prs)]
     if len(changes) < len(prs):
+        pr = forge_vocabulary().pr_noun
         raise CliError(
             "The selected pull requests do not describe the stack that was just fetched.",
-            hint=t"Compare {ui.cmd('jj log')} with the PRs on GitHub. Use "
-            t"{ui.cmd('jj-stack submit')} to update the PRs from local history, or "
+            hint=t"Compare {ui.cmd('jj log')} with the {pr}s on {forge_name()}. Use "
+            t"{ui.cmd('jj-stack submit')} to update the {pr}s from local history, or "
             t"{ui.cmd('jj-stack relink <pr> <change-id>')} to repair a saved link.",
         )
     # The stack was discovered from the top PR's head, so any changes above the top PR's own
@@ -410,7 +414,8 @@ def _save_checkout_tracking(
             raise CliError(
                 t"{pr_label} and branch "
                 t"{ui.bookmark(pr.head.ref)} no longer identify the same commit.",
-                hint="Retry in a moment; GitHub may still be catching up with a recent push.",
+                hint=f"Retry in a moment; {forge_name()} may still be catching up with a recent "
+                "push.",
             )
         replacements[change.change_id] = TrackedPR(
             pr_identity=PRIdentity(
