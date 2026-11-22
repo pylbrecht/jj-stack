@@ -25,7 +25,7 @@ from hypothesis.stateful import (
 )
 
 import jj_stack.cli as cli_module
-import jj_stack.commands.merge.wait as wait_module
+import jj_stack.forge.github.stack_merge_wait as wait_module
 from jj_stack.commands.submit.default_pr_text import default_pr_body
 from jj_stack.errors import CliError, DriftError, UnsupportedStackError
 from jj_stack.identifiers import ChangeId

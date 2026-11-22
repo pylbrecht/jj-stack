@@ -5,7 +5,13 @@ from __future__ import annotations
 from collections.abc import Sequence
 from typing import Protocol
 
-from jj_stack.forge.github.models import GithubStack
+from jj_stack.config import MergeMethod
+from jj_stack.forge.github.models import (
+    GithubPullRequest,
+    GithubStack,
+    GithubStackMerge,
+    GithubStackMergeSubmission,
+)
 from jj_stack.forge.models import (
     PRComment,
     PRProgress,
@@ -27,6 +33,7 @@ class RepoAddress(Protocol):
 class StackObjects(Protocol):
     """The forge's own record of an ordered group of pull requests: a GitHub stack.
 
+    It also merges a stack prefix through that record, directly or through GitHub's merge queue.
     A forge without such a record has no `StackObjects`, and its stack membership is empty.
     """
 
@@ -56,6 +63,29 @@ class StackObjects(Protocol):
         *,
         stack_number: int,
     ) -> GithubStack | None: ...
+
+    async def base_branch_uses_merge_queue(self, *, branch: str) -> bool: ...
+
+    async def submit_stack_merge(
+        self,
+        *,
+        expected_head_sha: CommitId,
+        method: MergeMethod | None,
+        pr_number: int,
+    ) -> GithubStackMergeSubmission: ...
+
+    async def poll_stack_merge(
+        self,
+        *,
+        operation_uuid: str,
+        pr_number: int,
+    ) -> GithubStackMerge: ...
+
+    async def get_merge_queue_prs(
+        self,
+        *,
+        pr_numbers: Sequence[int],
+    ) -> dict[int, GithubPullRequest | None]: ...
 
 
 class Forge(Protocol):

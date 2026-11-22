@@ -28,6 +28,7 @@ from ..support.fake_github import (
     create_app,
 )
 from ..support.integration_helpers import (
+    NoStacksGithubClient,
     commit_file,
     enable_sign_on_push,
     init_fake_github_repo,
@@ -187,16 +188,11 @@ def test_submit_stacks_prs_without_a_github_stack_on_a_forge_without_stacks(
     repo, fake_repo = init_fake_github_repo(tmp_path)
     config_path = configure_submit_environment(monkeypatch, tmp_path, fake_repo)
 
-    class NoStacksClient(GithubClient):
-        @property
-        def stacks(self) -> None:
-            return None
-
     patch_github_client_builders(
         monkeypatch,
         app=create_app(fake_repo),
         fake_repo=fake_repo,
-        client_type=NoStacksClient,
+        client_type=NoStacksGithubClient,
     )
     commit_file(repo, "feature 1", "feature-1.txt")
     commit_file(repo, "feature 2", "feature-2.txt")

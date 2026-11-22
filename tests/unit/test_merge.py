@@ -3,10 +3,11 @@ from __future__ import annotations
 import pytest
 
 from jj_stack.commands.merge.command import _resolve_merge_method
-from jj_stack.commands.merge.plan import MergeChange, merge_precondition_error
+from jj_stack.commands.merge.plan import merge_precondition_error
 from jj_stack.errors import CliError
 from jj_stack.forge.github.models import GithubPullRequest
 from jj_stack.forge.github.resolution import GithubRepoAddress
+from jj_stack.forge.merge import MergeChange
 from jj_stack.forge.models import BranchRef, PRHead, Repo
 from jj_stack.models.git import GitRemote
 from jj_stack.models.tracking import PRIdentity, SubmittedBaseline, TrackedPR
