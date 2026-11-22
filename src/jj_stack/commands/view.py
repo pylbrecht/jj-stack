@@ -1,10 +1,10 @@
-"""Compare the local and GitHub state of the selected `jj` stacks.
+"""Compare the local and forge state of the selected `jj` stacks.
 
 Show submitted and unsubmitted changes with their current PR state. Long stacks are summarized;
 use `--verbose` to show every change, plus unresolved review threads and failed or pending
 checks with links.
 
-PR state comes from GitHub and stack order comes from local history. This command does not
+PR state comes from the forge and stack order comes from local history. This command does not
 fetch. Run `jj git fetch` first if you need to update local `trunk()`. Pass several revsets or
 repeat `--pull-request` to inspect several stacks in one run.
 
@@ -17,7 +17,7 @@ Common examples:
 
 - `jj-stack view <change-id>` finds the full local stack containing that change.
 
-In terminals with hyperlink support, click a PR label to open it on GitHub. The PR in the
+In terminals with hyperlink support, click a PR label to open it on the forge. The PR in the
 "Submitted stack" heading links to the topmost submitted PR.
 """
 
@@ -99,7 +99,11 @@ def view(
 ) -> int:
     """CLI entrypoint for `view`."""
 
-    context = bootstrap_context(global_options, snapshot_working_copy=not ignore_working_copy)
+    context = bootstrap_context(
+        global_options,
+        snapshot_working_copy=not ignore_working_copy,
+        forges=("github", "gitlab"),
+    )
     return _run_status(
         context=context,
         selectors=selectors,

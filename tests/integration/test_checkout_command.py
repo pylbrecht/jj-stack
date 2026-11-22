@@ -12,6 +12,7 @@ from ..support.integration_helpers import (
     init_fake_github_repo,
     init_fake_github_repo_with_submitted_feature,
     init_fake_github_repo_with_submitted_stack,
+    init_fake_gitlab_stack,
     run_command,
     selected_stack,
 )
@@ -427,3 +428,29 @@ def test_checkout_pick_edits_selected_tracked_stack(
     assert "Saved pull request links are already up to date for this stack." in captured.out
     assert "Working copy now edits" in captured.out
     assert JjClient(repo).resolve_commit("@").change_id == feature_1_change_id
+
+
+def test_checkout_fetches_a_gitlab_mr_stack_and_saves_its_links(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    repo, config_path, _host = init_fake_gitlab_stack(
+        monkeypatch=monkeypatch,
+        tmp_path=tmp_path,
+        size=2,
+    )
+    stack = selected_stack(repo)
+    run_command(["jj", "abandon", *(change.change_id for change in stack.changes)], repo)
+
+    exit_code = _main(repo, config_path, "checkout", "--pull-request", "2")
+    output = " ".join(capsys.readouterr().out.split())
+
+    assert exit_code == 0
+    assert "Saved pull request links for 2 MRs" in output
+    assert JjClient(repo).resolve_commit("@").change_id == stack.head.change_id
+    saved = TrackingStore.for_repo(repo).load().prs
+    assert {change_id: tracked.pr_identity.pr_number for change_id, tracked in saved.items()} == {
+        stack.changes[0].change_id: 1,
+        stack.changes[1].change_id: 2,
+    }

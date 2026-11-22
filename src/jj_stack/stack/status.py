@@ -12,10 +12,9 @@ from jj_stack.bootstrap import CommandContext
 from jj_stack.concurrency import wait_for_read_tasks
 from jj_stack.errors import CliError, ErrorMessage, error_message
 from jj_stack.forge.errors import ForgeError
-from jj_stack.forge.github.resolution import GithubRepoAddress
 from jj_stack.forge.models import PRProgress, PullRequest
 from jj_stack.forge.protocol import Forge, RepoAddress
-from jj_stack.forge.target import ForgeTarget
+from jj_stack.forge.target import ForgeAddress, ForgeTarget
 from jj_stack.forge.vocabulary import forge_name
 from jj_stack.identifiers import ChangeId, CommitId
 from jj_stack.models.git import GitRemote
@@ -166,7 +165,7 @@ def _local_observation(prepared: PreparedLocalStack, change: LocalCommit) -> Cha
 async def lookup_pr_lookups_async(
     *,
     context: CommandContext,
-    forge_repo: GithubRepoAddress,
+    forge_repo: ForgeAddress,
     observations: Mapping[str, ChangeObservation],
     verbose: bool,
 ) -> dict[str, ChangeObservation]:

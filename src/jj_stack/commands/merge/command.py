@@ -43,7 +43,6 @@ from jj_stack.config import MergeMethod
 from jj_stack.errors import CliError, error_hint
 from jj_stack.forge.errors import ForgeError
 from jj_stack.forge.github.error_messages import observe_github_repo, read_or_stop
-from jj_stack.forge.github.resolution import GithubRepoAddress
 from jj_stack.forge.github.run import GithubRun, ObservedTrunk
 from jj_stack.forge.merge import (
     ChecksPending,
@@ -52,7 +51,7 @@ from jj_stack.forge.merge import (
     MergeResult,
     PendingMerge,
 )
-from jj_stack.forge.protocol import Forge, StackObjects
+from jj_stack.forge.protocol import Forge, RepoAddress, StackObjects
 from jj_stack.forge.target import ForgeTarget, require_forge_target, resolve_forge_target
 from jj_stack.formatting import pr_url
 from jj_stack.identifiers import ChangeId, short_change_id
@@ -127,7 +126,9 @@ async def _run_merge(
     context: CommandContext,
     options: MergeOptions,
 ) -> int:
-    target = require_forge_target(resolve_forge_target(context.jj_client.list_git_remotes()))
+    target = require_forge_target(
+        resolve_forge_target(context.jj_client.list_git_remotes(), forge=context.config.forge)
+    )
     async with context.open_forge(repo=target.repo) as github_client:
         stacks = github_client.stacks
         if stacks is None:
@@ -396,7 +397,7 @@ def _report_merge_requested(
     pending: PendingMerge,
     *,
     head_change_id: ChangeId,
-    repo: GithubRepoAddress,
+    repo: RepoAddress,
 ) -> None:
     # From here, stopping the command no longer stops the merge.
     pr_number = pending.pr_number

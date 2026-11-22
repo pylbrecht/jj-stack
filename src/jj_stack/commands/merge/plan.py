@@ -5,8 +5,8 @@ from __future__ import annotations
 from dataclasses import replace
 
 import jj_stack.ui as ui
-from jj_stack.forge.github.resolution import GithubRepoAddress
 from jj_stack.forge.merge import MergeAction, MergeChange, MergePlan
+from jj_stack.forge.protocol import RepoAddress
 from jj_stack.formatting import format_pr_number
 from jj_stack.identifiers import ChangeId, short_change_id
 from jj_stack.models.stack import LocalCommit
@@ -28,7 +28,7 @@ from jj_stack.ui import Message
 def build_merge_plan(
     *,
     observation: RepoFacts,
-    repo: GithubRepoAddress,
+    repo: RepoAddress,
     changes: tuple[LocalCommit, ...],
     target_change_id: ChangeId | None,
 ) -> MergePlan:
@@ -91,7 +91,7 @@ def build_merge_plan(
 
 def merge_precondition_error(
     *,
-    expected_repo: GithubRepoAddress,
+    expected_repo: RepoAddress,
     observation: RepoFacts,
     change: MergeChange,
     sync_target: str,

@@ -2,8 +2,11 @@ from __future__ import annotations
 
 import asyncio
 import json
+from collections.abc import Sequence
+from urllib.parse import urlencode
 
 import pytest
+from pydantic import BaseModel
 
 from jj_stack.forge.errors import ForgeError, ForgeErrorKind
 from jj_stack.forge.gitlab.client import GitlabClient
@@ -24,8 +27,10 @@ class _ScriptedTransport:
         self,
         method: str,
         path: str,
+        *,
+        query: Sequence[tuple[str, str]] = (),
     ) -> GitlabResponse:
-        self.requests.append((method, path))
+        self.requests.append((method, f"{path}?{urlencode(query)}" if query else path))
         return self._responses.pop(0)
 
 
@@ -103,3 +108,39 @@ def test_rate_limit_that_outlasts_the_retries_stops_as_rate_limited() -> None:
         asyncio.run(client.get_version())
 
     assert raised.value.kind == "rate_limited"
+
+
+class _Item(BaseModel):
+    iid: int
+
+
+def test_a_page_with_an_unexpected_item_becomes_a_forge_error() -> None:
+    client = GitlabClient(_ScriptedTransport(_json_response(200, [{"iid": 1}, {"id": 2}])))
+
+    with pytest.raises(ForgeError) as raised:
+        asyncio.run(client.get_pages("projects/7/merge_requests", model=_Item))
+
+    assert raised.value.kind == "unavailable"
+    assert "unexpected GitLab answer" in raised.value.message
+
+
+def test_a_paged_list_follows_each_next_link_until_the_last_page() -> None:
+    next_link = (
+        '<https://gitlab.test/api/v4/projects/7/merge_requests?page=2&per_page=100>; rel="next", '
+        '<https://gitlab.test/api/v4/projects/7/merge_requests?page=1&per_page=100>; rel="first"'
+    )
+    transport = _ScriptedTransport(
+        _json_response(200, [{"iid": 1}, {"iid": 2}], link=next_link),
+        _json_response(200, [{"iid": 3}]),
+    )
+    client = GitlabClient(transport)
+
+    items = asyncio.run(
+        client.get_pages("projects/7/merge_requests", query=(("state", "opened"),), model=_Item)
+    )
+
+    assert [item.iid for item in items] == [1, 2, 3]
+    assert transport.requests == [
+        ("GET", "projects/7/merge_requests?state=opened&per_page=100"),
+        ("GET", "projects/7/merge_requests?page=2&per_page=100"),
+    ]

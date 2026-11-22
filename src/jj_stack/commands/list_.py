@@ -2,17 +2,17 @@
 
 Each row shows the head change ID, the stack's PRs, PR state, and head description. The change
 count appears too when the stack has changes without PRs. Stacks without any submitted changes
-and stacks that exist only on GitHub are not listed.
+and stacks that exist only on the forge are not listed.
 
 Orphaned PRs are listed separately: their local changes are no longer in any stack. The orphan
-rows show saved PR links without checking their current GitHub state. To close them and remove
+rows show saved PR links without checking their current forge state. To close them and remove
 their unused branches, stack overview comments, and saved links, use
 `jj-stack cleanup --pull-request orphans --close`.
 
-For local stacks, PR state comes from GitHub and stack order comes from local history. This
+For local stacks, PR state comes from the forge and stack order comes from local history. This
 command does not fetch. Run `jj git fetch` first if you need to update local `trunk()`.
 
-In terminals with hyperlink support, click the PR label in a row to open it on GitHub. A count
+In terminals with hyperlink support, click the PR label in a row to open it on the forge. A count
 such as `5 PRs` links to the topmost PR in that stack.
 """
 
@@ -89,7 +89,11 @@ def list_(
 ) -> int:
     """CLI entrypoint for `list`."""
 
-    context = bootstrap_context(global_options, snapshot_working_copy=not ignore_working_copy)
+    context = bootstrap_context(
+        global_options,
+        snapshot_working_copy=not ignore_working_copy,
+        forges=("github", "gitlab"),
+    )
     return _run_list(
         as_json=as_json,
         context=context,
@@ -115,7 +119,7 @@ def _run_list(
         current_tracked_commit_id = None
 
     github_target = (
-        resolve_forge_target(context.jj_client.list_git_remotes())
+        resolve_forge_target(context.jj_client.list_git_remotes(), forge=context.config.forge)
         if state.prs
         else UnresolvedForgeTarget()
     )

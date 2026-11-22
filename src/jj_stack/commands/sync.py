@@ -116,7 +116,9 @@ async def _sync_async(
     pr: str | None,
     revset: str | None,
 ) -> int:
-    target = require_forge_target(resolve_forge_target(context.jj_client.list_git_remotes()))
+    target = require_forge_target(
+        resolve_forge_target(context.jj_client.list_git_remotes(), forge=context.config.forge)
+    )
     async with context.open_forge(repo=target.repo) as github:
         run = GithubRun(context=context, dry_run=dry_run, github=github, target=target)
         if all_:

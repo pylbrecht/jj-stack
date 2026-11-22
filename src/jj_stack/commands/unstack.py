@@ -102,7 +102,7 @@ async def _run_github_unstack(
     """Remove GitHub stack number `target`, or the one holding the selected local stack."""
 
     github_target = require_forge_target(
-        resolve_forge_target(context.jj_client.list_git_remotes())
+        resolve_forge_target(context.jj_client.list_git_remotes(), forge=context.config.forge)
     )
 
     async with context.open_forge(repo=github_target.repo) as github_client:

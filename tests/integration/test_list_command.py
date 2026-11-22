@@ -18,6 +18,7 @@ from ..support.integration_helpers import (
     init_fake_github_repo,
     init_fake_github_repo_with_submitted_feature,
     init_fake_github_repo_with_submitted_stack,
+    init_fake_gitlab_stack,
     patch_github_client_builders,
     run_command,
     selected_stack,
@@ -515,3 +516,27 @@ def test_list_and_view_agree_that_a_divergent_change_is_an_incomplete_report(
     assert view_exit_code == EXIT_INCOMPLETE
     assert "jj converge -r" in view_output.out
     assert "divergent" in view_output.out
+
+
+def test_list_on_gitlab_counts_mrs_and_reports_their_merge_status(
+    tmp_path,
+    monkeypatch,
+    capsys,
+) -> None:
+    repo, config_path, host = init_fake_gitlab_stack(
+        monkeypatch=monkeypatch,
+        tmp_path=tmp_path,
+        size=2,
+    )
+    assert host.project is not None
+    host.project.prs[2].detailed_merge_status = "conflict"
+    assert run_main(repo, config_path, "checkout", "--pull-request", "2") == 0
+    capsys.readouterr()
+
+    exit_code = run_main(repo, config_path, "list")
+    output = " ".join(capsys.readouterr().out.split())
+
+    assert exit_code == 0
+    assert "2 MRs" in output
+    assert "1 ready" in output
+    assert "merge conflicts" in output

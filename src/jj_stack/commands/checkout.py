@@ -16,8 +16,11 @@ must use jj-stack's branch naming scheme with this checkout's configured prefix,
 here first. PRs with head branches in another repository, such as a contributor's fork, are
 not supported.
 
-Checkout does not rebase changes or modify GitHub. To start a new change on top, run `jj new`
+Checkout does not rebase changes or modify the forge. To start a new change on top, run `jj new`
 afterward.
+
+On GitLab, `--pull-request` takes a merge request's number or URL, and `--pick` lists only local
+stacks, since GitLab has no stack object.
 
 In terminals with hyperlink support, the PR beside "Top" in each GitHub stack's `--pick` entry
 is a clickable link. Open it to inspect that stack on GitHub before choosing an entry.
@@ -40,7 +43,6 @@ from jj_stack.errors import CliError, UsageError
 from jj_stack.forge.errors import ForgeError
 from jj_stack.forge.github.error_messages import observe_github_repo
 from jj_stack.forge.github.models import GithubStack
-from jj_stack.forge.github.resolution import require_github_repo
 from jj_stack.forge.models import PullRequest
 from jj_stack.forge.pr_refs import (
     load_pr,
@@ -49,7 +51,7 @@ from jj_stack.forge.pr_refs import (
     require_managed_pr_head,
 )
 from jj_stack.forge.protocol import Forge, RepoAddress
-from jj_stack.forge.target import select_submit_remote
+from jj_stack.forge.target import require_forge_repo, select_submit_remote
 from jj_stack.forge.vocabulary import forge_name, forge_vocabulary
 from jj_stack.formatting import format_pr_label
 from jj_stack.identifiers import ChangeId, CommitId, short_change_id
@@ -98,7 +100,7 @@ def checkout(
 ) -> int:
     """CLI entrypoint for `checkout`."""
 
-    context = bootstrap_context(global_options)
+    context = bootstrap_context(global_options, forges=("github", "gitlab"))
     result = asyncio.run(_checkout_async(context=context, pick=pick, pr=pr, revset=revset))
     if result.fetched_tip_commit is not None:
         console.output(ui.PrefixedLine("Fetched PR head commit: ", result.fetched_tip_commit))
@@ -129,7 +131,7 @@ async def _checkout_async(
     if not pick and pr is None:
         return await _adopt_under_lock(context, lambda: _checkout_saved_stack(context, revset))
     remote = select_submit_remote(context.jj_client.list_git_remotes())
-    repo = require_github_repo(remote)
+    repo = require_forge_repo(remote, forge=context.config.forge)
     async with context.open_forge(repo=repo) as github_client:
         if pick:
             choice = await _pick_stack(context, github_client=github_client, repo=repo)

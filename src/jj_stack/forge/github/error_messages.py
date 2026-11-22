@@ -9,6 +9,7 @@ from jj_stack.forge.errors import ForgeError
 from jj_stack.forge.github.client import REPO_NOT_FOUND_REASON
 from jj_stack.forge.models import Repo
 from jj_stack.forge.protocol import Forge
+from jj_stack.forge.vocabulary import forge_name
 from jj_stack.ui import Message, code
 
 
@@ -37,5 +38,5 @@ async def observe_github_repo(github: Forge, *, hint: Message | None = None) -> 
     except ForgeError as error:
         if error.kind == "not_found":
             hint = REPO_NOT_FOUND_REASON
-        message = ("Could not inspect GitHub repo ", code(github.repo.full_name))
+        message = (f"Could not inspect {forge_name()} repo ", code(github.repo.full_name))
         raise CliError(message, hint=hint) from error

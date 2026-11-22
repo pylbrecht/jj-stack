@@ -31,15 +31,14 @@ import jj_stack.console as console
 import jj_stack.ui as ui
 from jj_stack.bootstrap import CommandContext, GlobalOptions, bootstrap_context
 from jj_stack.errors import CliError
-from jj_stack.forge.github.resolution import GithubRepoAddress, require_github_repo
 from jj_stack.forge.models import PullRequest
 from jj_stack.forge.pr_refs import (
     load_pr,
     parse_repo_pr_reference,
     require_managed_pr_head,
 )
-from jj_stack.forge.protocol import Forge
-from jj_stack.forge.target import select_submit_remote
+from jj_stack.forge.protocol import Forge, RepoAddress
+from jj_stack.forge.target import require_forge_repo, select_submit_remote
 from jj_stack.formatting import format_pr_label, format_pr_number
 from jj_stack.identifiers import ChangeId, CommitId, short_change_id
 from jj_stack.models.tracking import PRIdentity, SubmittedBaseline, TrackedPR
@@ -116,7 +115,7 @@ async def _run_relink_async(
         raise CliError("The selected stack has no changes to link to a pull request.")
     change = stack.head
     remote = select_submit_remote(client.list_git_remotes())
-    repo = require_github_repo(remote)
+    repo = require_forge_repo(remote, forge=context.config.forge)
     pr_number = parse_repo_pr_reference(reference=pr_reference, repo=repo)
     async with context.open_forge(repo=repo) as github_client:
         pr, head_sha = await _load_exact_relink_pr(
@@ -207,7 +206,7 @@ async def _load_exact_relink_pr(
     *,
     github_client: Forge,
     pr_number: int,
-    repo: GithubRepoAddress,
+    repo: RepoAddress,
 ) -> tuple[PullRequest, CommitId]:
     pr = await load_pr(github_client=github_client, pr_number=pr_number)
     pr_number_label = format_pr_number(pr.number, url=pr.html_url)

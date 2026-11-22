@@ -5,13 +5,18 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 import jj_stack.forge.github.resolution as github_resolution
+import jj_stack.forge.gitlab.resolution as gitlab_resolution
 import jj_stack.ui as ui
-from jj_stack.errors import CliError, ErrorMessage, error_message
+from jj_stack.config import ForgeKind
+from jj_stack.errors import CliError, ErrorHint, ErrorMessage, error_message
 from jj_stack.forge.github.resolution import GithubRepoAddress
+from jj_stack.forge.gitlab.resolution import GitlabProjectAddress
 from jj_stack.forge.protocol import RepoAddress
 from jj_stack.forge.vocabulary import forge_name
 from jj_stack.models.git import GitRemote
 from jj_stack.ui import Message
+
+type ForgeAddress = GithubRepoAddress | GitlabProjectAddress
 
 
 @dataclass(frozen=True, slots=True)
@@ -19,7 +24,7 @@ class ForgeTarget:
     """A fully resolved forge target: the selected Git remote and its repo."""
 
     remote: GitRemote
-    repo: GithubRepoAddress
+    repo: ForgeAddress
 
     # A resolved target carries no diagnostics. These mirror UnresolvedForgeTarget so
     # degraded-mode consumers can read errors off either arm without narrowing.
@@ -63,8 +68,32 @@ def select_submit_remote(remotes: tuple[GitRemote, ...]) -> GitRemote:
     )
 
 
+def parse_forge_repo(
+    remote: GitRemote,
+    *,
+    forge: ForgeKind,
+) -> ForgeAddress | None:
+    """Return the repo of `forge` that both of the remote's URLs name, if they name one."""
+
+    if forge == "gitlab":
+        return gitlab_resolution.parse_gitlab_project(remote)
+    return github_resolution.parse_github_repo(remote)
+
+
+def _repo_failure(
+    remote: GitRemote,
+    *,
+    forge: ForgeKind,
+) -> tuple[ErrorMessage, ErrorHint]:
+    if forge == "gitlab":
+        return gitlab_resolution.gitlab_project_failure(remote)
+    return github_resolution.github_repo_failure(remote)
+
+
 def resolve_forge_target(
     remotes: tuple[GitRemote, ...],
+    *,
+    forge: ForgeKind,
 ) -> ForgeTarget | UnresolvedForgeTarget:
     """Resolve the optional remote and forge target used by read-mostly commands."""
 
@@ -75,11 +104,26 @@ def resolve_forge_target(
     except CliError as error:
         return UnresolvedForgeTarget(remote_error=error_message(error))
 
-    repo = github_resolution.parse_github_repo(remote)
+    repo = parse_forge_repo(remote, forge=forge)
     if repo is None:
-        message, hint = github_resolution.github_repo_failure(remote)
+        message, hint = _repo_failure(remote, forge=forge)
         return UnresolvedForgeTarget(remote=remote, repo_error=(message, " ", hint))
     return ForgeTarget(remote=remote, repo=repo)
+
+
+def require_forge_repo(
+    remote: GitRemote,
+    *,
+    forge: ForgeKind,
+) -> ForgeAddress:
+    """Parse the remote's forge repo, or stop with what is wrong with its URLs."""
+
+    repo = parse_forge_repo(remote, forge=forge)
+    if repo is not None:
+        return repo
+
+    message, hint = _repo_failure(remote, forge=forge)
+    raise CliError(message, hint=hint)
 
 
 def require_forge_target(target: ForgeTarget | UnresolvedForgeTarget) -> ForgeTarget:

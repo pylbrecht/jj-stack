@@ -17,9 +17,11 @@ import jj_stack.forge.github.resolution
 from jj_stack.forge.errors import ForgeError
 from jj_stack.forge.github.client import GithubClient
 from jj_stack.forge.github.resolution import GithubRepoAddress
+from jj_stack.forge.gitlab.resolution import GitlabProjectAddress
 from jj_stack.identifiers import CommitId, short_change_id
 from jj_stack.jj.client import JjClient, PRRefUpdate
 from jj_stack.models.stack import LocalStack
+from jj_stack.pr_branch_namespace import current_pr_branch_namespace
 from jj_stack.stack.selected import select_stack_path
 from jj_stack.state.store import TrackingStore
 
@@ -28,7 +30,7 @@ from .fake_github import (
     create_app,
     initialize_bare_repo,
 )
-from .fake_gitlab import FakeGitlabHost, create_gitlab_app, glab_runner
+from .fake_gitlab import FakeGitlabHost, FakeGitlabProject, create_gitlab_app, glab_runner
 
 _TEMPLATE_OWNER = "octo-org"
 _TEMPLATE_NAME = "stacked-prs"
@@ -134,6 +136,50 @@ def configure_fake_gitlab_environment(
         ],
     )
     return repo, config_path
+
+
+def init_fake_gitlab_stack(
+    *,
+    monkeypatch,
+    tmp_path: Path,
+    size: int,
+) -> tuple[Path, Path, FakeGitlabHost]:
+    """Commit `size` changes and open one stacked MR per change on the fake GitLab project.
+
+    The MRs exist only on GitLab: the local repo has no saved links for them yet.
+    """
+
+    repo, bare_repo = init_fake_github_repo(tmp_path)
+    project = FakeGitlabProject(git_dir=bare_repo.git_dir)
+    host = FakeGitlabHost(project=project)
+    for index in range(1, size + 1):
+        commit_file(repo, f"feature {index}", f"feature-{index}.txt")
+
+    base = project.default_branch
+    for change in selected_stack(repo).changes:
+        branch = current_pr_branch_namespace().generate_branch(change)
+        JjClient(repo).mutate_remote_pr_branch_refs(
+            remote="origin",
+            updates=(
+                PRRefUpdate(branch=branch, expected_target=None, desired_target=change.commit_id),
+            ),
+        )
+        project.create_merge_request(
+            source_branch=branch, target_branch=base, title=change.subject
+        )
+        base = branch
+
+    monkeypatch.setenv("XDG_STATE_HOME", str(tmp_path / "state-home"))
+    monkeypatch.setattr(
+        "jj_stack.bootstrap.run_subprocess",
+        glab_runner(create_gitlab_app(host), host),
+    )
+    monkeypatch.setattr(
+        "jj_stack.forge.gitlab.resolution.parse_gitlab_project",
+        lambda _remote: GitlabProjectAddress(host=host.hostname, path=project.path),
+    )
+    config_path = write_fake_github_config(tmp_path, extra_lines=['forge = "gitlab"'])
+    return repo, config_path, host
 
 
 def _copy_fake_github_repo_from_template(

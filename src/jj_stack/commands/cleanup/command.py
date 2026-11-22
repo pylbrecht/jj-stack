@@ -282,7 +282,9 @@ def _prepare_cleanup(
         close_open_prs=close,
         context=context,
         dry_run=dry_run,
-        github_target=resolve_forge_target(context.jj_client.list_git_remotes()),
+        github_target=resolve_forge_target(
+            context.jj_client.list_git_remotes(), forge=context.config.forge
+        ),
         state=state,
     )
 
@@ -317,6 +319,7 @@ def _resolve_cleanup_change_ids(
         )
     if pr is not None:
         pr_number, repo = resolve_pr_reference(
+            forge=context.config.forge,
             jj_client=context.jj_client,
             pr_reference=pr,
         )

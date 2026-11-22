@@ -253,6 +253,7 @@
     },
     "pr": {
       "type": "object",
+      "description": "A pull request on the forge. On GitLab it is a merge request (MR), and number is its project-scoped iid.",
       "additionalProperties": false,
       "anyOf": [
         {
@@ -269,7 +270,7 @@
       "properties": {
         "checks": {
           "type": "string",
-          "description": "Combined result of the checks GitHub has received; passing does not mean every required check has run.",
+          "description": "Combined result of the checks the forge has received, on GitLab the MR's head pipeline; passing does not mean every required check has run.",
           "enum": [
             "passed",
             "failed",
@@ -278,7 +279,7 @@
         },
         "merge_state_status": {
           "type": "string",
-          "description": "GitHub's reported mergeStateStatus; independent of reviews and checks."
+          "description": "The forge's own merge status: GitHub's mergeStateStatus or GitLab's detailed_merge_status; independent of reviews and checks."
         },
         "merge_details": {
           "$ref": "#/$defs/mergeDetails"

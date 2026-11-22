@@ -91,16 +91,6 @@ def github_repo_failure(remote: GitRemote) -> tuple[ErrorMessage, ErrorHint]:
     )
 
 
-def require_github_repo(remote: GitRemote) -> GithubRepoAddress:
-    """Parse a GitHub repo target or raise a user-facing CLI error."""
-
-    github_repo = parse_github_repo(remote)
-    if github_repo is not None:
-        return github_repo
-    message, hint = github_repo_failure(remote)
-    raise CliError(message, hint=hint)
-
-
 def resolve_trunk_branch(
     *,
     branches_at_trunk: Sequence[str],

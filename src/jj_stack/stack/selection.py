@@ -4,14 +4,14 @@ from __future__ import annotations
 
 import jj_stack.ui as ui
 from jj_stack.bootstrap import CommandContext
+from jj_stack.config import ForgeKind
 from jj_stack.errors import AmbiguousSelectionError, CliError, UsageError
-from jj_stack.forge.github import resolution
 from jj_stack.forge.pr_refs import (
     parse_pr_number,
     parse_repo_pr_reference,
 )
 from jj_stack.forge.protocol import RepoAddress
-from jj_stack.forge.target import select_submit_remote
+from jj_stack.forge.target import parse_forge_repo, select_submit_remote
 from jj_stack.forge.vocabulary import forge_name
 from jj_stack.formatting import format_pr_label
 from jj_stack.identifiers import ChangeId
@@ -32,6 +32,7 @@ def resolve_linked_change_for_pr(
         )
 
     pr_number, repo = resolve_pr_reference(
+        forge=context.config.forge,
         jj_client=context.jj_client,
         pr_reference=pr_reference,
     )
@@ -67,6 +68,7 @@ def resolve_linked_change_for_pr(
 
 def resolve_pr_reference(
     *,
+    forge: ForgeKind,
     jj_client: JjClient,
     pr_reference: str,
 ) -> tuple[int, RepoAddress | None]:
@@ -84,8 +86,8 @@ def resolve_pr_reference(
             t"use a pull request number or fix the selected remote.",
             hint=error.hint,
         ) from error
-    github_repo = resolution.parse_github_repo(remote)
-    if github_repo is None:
+    repo = parse_forge_repo(remote, forge=forge)
+    if repo is None:
         if pr_number is not None:
             return pr_number, None
         raise CliError(
@@ -93,4 +95,4 @@ def resolve_pr_reference(
             t"use a pull request number or fix the selected remote."
         )
 
-    return parse_repo_pr_reference(reference=pr_reference, repo=github_repo), github_repo
+    return parse_repo_pr_reference(reference=pr_reference, repo=repo), repo

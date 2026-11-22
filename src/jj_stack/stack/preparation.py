@@ -40,7 +40,7 @@ def prepare_local_stack(
     jj_client = context.jj_client
     state_store = context.state_store
     state = state_store.load()
-    github_target = resolve_forge_target(jj_client.list_git_remotes())
+    github_target = resolve_forge_target(jj_client.list_git_remotes(), forge=context.config.forge)
     if fetch_remote_state and github_target.remote is not None:
         jj_client.fetch_remote(remote=github_target.remote.name)
 

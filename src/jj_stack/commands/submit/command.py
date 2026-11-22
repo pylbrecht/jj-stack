@@ -39,11 +39,10 @@ from jj_stack.concurrency import wait_for_read_tasks
 from jj_stack.errors import CliError, UsageError
 from jj_stack.forge.github.error_messages import observe_github_repo, read_or_stop
 from jj_stack.forge.github.models import GithubStack
-from jj_stack.forge.github.resolution import require_github_repo
 from jj_stack.forge.github.run import GithubRun, ObservedTrunk
 from jj_stack.forge.models import PullRequest
 from jj_stack.forge.pr_refs import load_pr, parse_repo_pr_reference, pr_head_repo_problem
-from jj_stack.forge.target import ForgeTarget, select_submit_remote
+from jj_stack.forge.target import ForgeTarget, require_forge_repo, select_submit_remote
 from jj_stack.formatting import format_pr_label
 from jj_stack.identifiers import ChangeId, CommitId, short_change_id
 from jj_stack.jj.client import JjClient
@@ -261,7 +260,9 @@ async def run_submit_async(
     # The selected line is only rendered when submit picked the default head for the user.
     print_selected = options.revset is None
     remote = select_submit_remote(context.jj_client.list_git_remotes())
-    target = ForgeTarget(remote=remote, repo=require_github_repo(remote))
+    target = ForgeTarget(
+        remote=remote, repo=require_forge_repo(remote, forge=context.config.forge)
+    )
     generated_edit_path: Path | None = None
     settle_pr_text: Callable[[_SubmitObservation], _SubmitObservation] | None = None
     async with context.open_forge(repo=target.repo) as github_client:
