@@ -28,6 +28,7 @@ async def upsert_managed_comment(
             )
         else:
             await github_client.update_issue_comment(
+                issue_number=pr_number,
                 comment_id=existing_comment.id,
                 body=body,
             )

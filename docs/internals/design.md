@@ -15,8 +15,8 @@ forge. The rules below apply to any forge unless they are stated for GitHub alon
 variant**. A GitHub behaviour cited only as the reason for a rule does not limit that rule to
 GitHub.
 
-GitLab support is in progress: `doctor`, `list`, `view`, and `checkout` run on GitLab, and every
-other command stops before it reads or changes anything. On GitLab a pull request is a merge
+GitLab support is in progress: `doctor`, `list`, `view`, `checkout`, and `submit` run on GitLab,
+and every other command stops before it reads or changes anything. On GitLab a pull request is a merge
 request (MR) and its PR number is the project-scoped iid. Rules stated for GitLab alone are
 **GitLab variants**.
 
@@ -611,7 +611,9 @@ in the requested draft state.
 
 Submit maintains a per-PR revision-history comment with the most recent versions the forge
 reports; on GitHub they come from its force-push timeline. It shows readers how the PR evolved,
-remains after cleanup, and never determines topology or mutation eligibility.
+remains after cleanup, and never determines topology or mutation eligibility. GitLab variant: the
+versions are the MR's diff versions, one for each new head; GitLab also adds a version for a
+new target branch, which keeps the head and adds no revision.
 
 Without an edited draft choice, existing PRs become draft only with `--draft=all` and become ready
 only with `--open`; plain `submit --draft` leaves their draft state unchanged. With `--edit`,
@@ -622,11 +624,19 @@ command stops, the user can pass that file to `--resume-edit`; the retry re-obse
 stack and the forge, and accepts the file only when it names exactly the currently selected
 changes. The file carries no submit plan or phase.
 
+GitLab variant: GitLab keeps an MR's draft state in its title, as a `Draft:` prefix. Submit
+compares and reports the title without the prefix, so the draft state alone never counts as a
+title edit.
+
 `--reviewers` and `--team-reviewers` request the named reviewers even when a PR is otherwise
 unchanged and never remove omitted reviewers. `--re-request` acts on an otherwise unchanged PR.
 For each user, it considers the latest approval, request for changes, or dismissal, and requests
 another review only if that state is approved or changes requested. Comment-only reviews do not
 qualify. Re-requesting adds requests and never cancels a pending one.
+
+GitLab variant: GitLab has no team reviewers, so a team reviewer from `--team-reviewers` or the
+configuration stops submit before it reads or changes anything. A reviewer's current review state
+stands in for the latest review, since GitLab keeps no review history.
 
 An explicit `--label` request applies even when a PR is otherwise unchanged; configured labels
 alone do not turn a no-op submit into a metadata update. Labels are also additive; omitted labels

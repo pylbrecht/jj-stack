@@ -938,6 +938,7 @@ class GithubClient:
     async def update_issue_comment(
         self,
         *,
+        issue_number: int,  # noqa: ARG002 - GitHub comment IDs are repo-wide.
         comment_id: int,
         body: str,
     ) -> None:
@@ -951,6 +952,7 @@ class GithubClient:
     async def delete_issue_comment(
         self,
         *,
+        issue_number: int,  # noqa: ARG002 - GitHub comment IDs are repo-wide.
         comment_id: int,
     ) -> None:
         response = await self._request(

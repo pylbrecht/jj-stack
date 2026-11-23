@@ -14,11 +14,13 @@ async def delete_stack_overview_comment(
     *,
     comment_id: int,
     github_client: Forge,
+    pr_number: int,
 ) -> bool:
     """Delete one planned managed comment, accepting an already-absent target."""
 
     try:
         await github_client.delete_issue_comment(
+            issue_number=pr_number,
             comment_id=comment_id,
         )
     except ForgeError as error:

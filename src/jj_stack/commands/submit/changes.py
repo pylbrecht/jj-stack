@@ -7,6 +7,7 @@ from dataclasses import replace
 
 import jj_stack.ui as ui
 from jj_stack.errors import CliError, DriftError
+from jj_stack.forge.vocabulary import forge_name
 from jj_stack.formatting import format_pr_label
 from jj_stack.identifiers import ChangeId, CommitId, short_change_id
 from jj_stack.models.stack import LocalStack
@@ -109,7 +110,7 @@ def _require_submittable(
             hint=(
                 t"Run {ui.cmd(f'jj-stack sync {head}')} to update the local stack."
                 if isinstance(state, Merged)
-                else t"Reopen the PR on GitHub, or run "
+                else t"Reopen the PR on {forge_name()}, or run "
                 t"{ui.cmd(f'jj-stack cleanup --pull-request {state.pr.number}')} and submit "
                 t"again to create a new PR."
             ),
@@ -167,7 +168,7 @@ def require_published_base(
     if isinstance(state, Closed):
         raise _not_open_error(
             state,
-            hint=t"Reopen the PR on GitHub, or run "
+            hint=t"Reopen the PR on {forge_name()}, or run "
             t"{ui.cmd(f'jj-stack cleanup --pull-request {state.pr.number}')} and submit the "
             t"parent stack again before retrying.",
         )

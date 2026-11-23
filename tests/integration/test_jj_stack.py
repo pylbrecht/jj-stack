@@ -595,7 +595,7 @@ def test_commands_without_gitlab_support_stop_before_any_gitlab_request(
         tmp_path=tmp_path,
     )
 
-    exit_code = run_main(repo, config_path, "submit")
+    exit_code = run_main(repo, config_path, "sync")
     error = " ".join(capsys.readouterr().err.split())
 
     assert exit_code != 0

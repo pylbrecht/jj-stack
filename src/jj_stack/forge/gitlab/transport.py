@@ -8,6 +8,7 @@ another transport can replace it without changing the adapter.
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 from collections.abc import Awaitable, Mapping, Sequence
 from dataclasses import dataclass, field
@@ -71,8 +72,8 @@ class GitlabTransport(Protocol):
     """Deliver one GitLab API request and return its HTTP answer, whatever the status.
 
     `path` is relative to the host's `/api/v4/` and may already carry a query string, as the
-    `next` link of a paged answer does. A transport raises `ForgeError` only when no HTTP answer
-    arrived.
+    `next` link of a paged answer does. `body`, when given, is sent as JSON. A transport raises
+    `ForgeError` only when no HTTP answer arrived.
     """
 
     async def request(
@@ -81,6 +82,7 @@ class GitlabTransport(Protocol):
         path: str,
         *,
         query: Sequence[tuple[str, str]] = (),
+        body: Mapping[str, object] | None = None,
     ) -> GitlabResponse: ...
 
 
@@ -151,29 +153,36 @@ class GlabTransport:
         path: str,
         *,
         query: Sequence[tuple[str, str]] = (),
+        body: Mapping[str, object] | None = None,
     ) -> GitlabResponse:
         if query:
             path = f"{path}?{urlencode(query)}"
 
+        stdin = None if body is None else json.dumps(body).encode()
         if not self._warm_up.done:
             async with self._warm_up.lock:
                 if not self._warm_up.done:
-                    response = await self._send(method, path)
+                    response = await self._send(method, path, stdin=stdin)
                     self._warm_up.done = True
                     return response
 
-        return await self._send(method, path)
+        return await self._send(method, path, stdin=stdin)
 
     async def _send(
         self,
         method: str,
         path: str,
+        *,
+        stdin: bytes | None,
     ) -> GitlabResponse:
         argv = [*self.command, "api", path, "--hostname", self.hostname, "-i", "-X", method]
+        if stdin is not None:
+            argv += ["--input", "-", "-H", "Content-Type: application/json"]
+
         program = self.command[0]
         try:
             with timed("gitlab", f"{method} {path}"):
-                run = await self.runner(argv, stdin=None, env={**os.environ, **_GLAB_ENV})
+                run = await self.runner(argv, stdin=stdin, env={**os.environ, **_GLAB_ENV})
         except FileNotFoundError as error:
             raise ForgeError(
                 f"GitLab command {program} was not found; install it or set "

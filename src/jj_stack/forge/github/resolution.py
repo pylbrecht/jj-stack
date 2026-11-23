@@ -40,6 +40,19 @@ class GithubRepoAddress:
     ) -> str:
         return f"{self.owner}:{ref}"
 
+    def commit_url(
+        self,
+        commit_id: CommitId,
+    ) -> str:
+        return f"https://github.com/{self.full_name}/commit/{commit_id}"
+
+    def compare_url(
+        self,
+        before: CommitId,
+        after: CommitId,
+    ) -> str:
+        return f"https://github.com/{self.full_name}/compare/{before}..{after}"
+
     def parse_pr_url_path(
         self,
         path: str,

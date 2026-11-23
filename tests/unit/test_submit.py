@@ -48,7 +48,12 @@ def test_overview_comment_move_keeps_source_when_head_creation_fails() -> None:
             assert body == source_comment.body
             raise ForgeError("create failed", kind="unavailable")
 
-        async def delete_issue_comment(self, *, comment_id: int) -> None:
+        async def delete_issue_comment(
+            self,
+            *,
+            issue_number: int,
+            comment_id: int,
+        ) -> None:
             self.deleted_comment_ids.append(comment_id)
 
     client = CommentClientStub()

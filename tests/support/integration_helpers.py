@@ -143,10 +143,12 @@ def init_fake_gitlab_stack(
     monkeypatch,
     tmp_path: Path,
     size: int,
+    open_merge_requests: bool = True,
 ) -> tuple[Path, Path, FakeGitlabHost]:
     """Commit `size` changes and open one stacked MR per change on the fake GitLab project.
 
-    The MRs exist only on GitLab: the local repo has no saved links for them yet.
+    The MRs exist only on GitLab: the local repo has no saved links for them yet. Without
+    `open_merge_requests`, the changes stay local, ready for a first submit.
     """
 
     repo, bare_repo = init_fake_github_repo(tmp_path)
@@ -156,7 +158,7 @@ def init_fake_gitlab_stack(
         commit_file(repo, f"feature {index}", f"feature-{index}.txt")
 
     base = project.default_branch
-    for change in selected_stack(repo).changes:
+    for change in selected_stack(repo).changes if open_merge_requests else ():
         branch = current_pr_branch_namespace().generate_branch(change)
         JjClient(repo).mutate_remote_pr_branch_refs(
             remote="origin",

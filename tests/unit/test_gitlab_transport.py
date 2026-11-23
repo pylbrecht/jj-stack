@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 
 import pytest
 
@@ -126,6 +127,7 @@ class _RecordingRunner:
 
     def __init__(self) -> None:
         self.argvs: list[tuple[str, ...]] = []
+        self.stdins: list[bytes | None] = []
         self.running = 0
         self.peaks: list[int] = []
 
@@ -137,6 +139,7 @@ class _RecordingRunner:
         env,
     ) -> CommandRun:
         self.argvs.append(tuple(argv))
+        self.stdins.append(stdin)
         self.running += 1
         self.peaks.append(self.running)
         await asyncio.sleep(0)
@@ -163,6 +166,18 @@ def test_query_parameters_are_sent_url_encoded_in_the_path() -> None:
     assert runner.argvs[0][2] == (
         "projects/1/merge_requests?source_branch=jj-stack%2Fa+b&iids%5B%5D=3"
     )
+
+
+def test_a_request_body_is_sent_as_json_on_stdin() -> None:
+    runner = _RecordingRunner()
+    transport = GlabTransport(command=("glab",), hostname="gitlab.test", runner=runner)
+
+    asyncio.run(transport.request("POST", "projects/1/merge_requests", body={"title": "Ünï"}))
+
+    argv = runner.argvs[0]
+    assert argv[argv.index("--input") + 1] == "-"
+    assert argv[argv.index("-H") + 1] == "Content-Type: application/json"
+    assert json.loads(runner.stdins[0] or b"") == {"title": "Ünï"}
 
 
 def test_the_first_request_runs_alone_before_later_requests_run_together() -> None:

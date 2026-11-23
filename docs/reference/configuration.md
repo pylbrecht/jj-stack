@@ -66,9 +66,9 @@ you still set the older `git.sign-on-push = true`, jj treats it as
 
 ## GitLab
 
-GitLab support is in progress. So far `jj-stack doctor`, `jj-stack list`, `jj-stack view`, and
-`jj-stack checkout` work with a GitLab project; other commands stop before they read or change
-anything. Human output says MR and references a merge request as `!12`; `--pull-request` takes
+GitLab support is in progress. So far `jj-stack doctor`, `jj-stack list`, `jj-stack view`,
+`jj-stack checkout`, and `jj-stack submit` work with a GitLab project; other commands stop before
+they read or change anything. Human output says MR and references a merge request as `!12`; `--pull-request` takes
 the MR's number or its URL. To select GitLab for a repo:
 
 ```toml
@@ -89,6 +89,11 @@ jj-stack reads the GitLab host and the project path, including nested groups, fr
 URL, and always passes that host to `glab` as `--hostname`. The host must be the name under
 which `glab auth login` stored your login. jj-stack supports GitLab 19.1 or later.
 `jj-stack doctor` checks your login and the GitLab version through the configured command.
+
+On GitLab, `reviewers` contains GitLab usernames. GitLab has no team reviewers, so `submit` stops
+when `team_reviewers` or `--team-reviewers` names one. A draft MR's title starts with `Draft:`,
+which is how GitLab stores the draft state. Without a local pull request template, `submit` uses
+the project's `Default` merge request template from `.gitlab/merge_request_templates/Default.md`.
 
 ## Authentication
 
