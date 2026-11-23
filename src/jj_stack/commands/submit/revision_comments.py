@@ -5,7 +5,7 @@ from __future__ import annotations
 import jj_stack.console as console
 from jj_stack.concurrency import run_bounded_tasks
 from jj_stack.forge.models import PRComment, PRRevision
-from jj_stack.forge.protocol import Forge
+from jj_stack.forge.protocol import Forge, RepoAddress
 from jj_stack.identifiers import CommitId, short_commit_id
 
 from .managed_comments import upsert_managed_comment
@@ -56,7 +56,7 @@ async def _sync_revision_history_comment(
         return
     body = _revision_history_body(
         revisions=revisions,
-        repo_full_name=github_client.repo.full_name,
+        repo=github_client.repo,
     )
     await upsert_managed_comment(
         body=body,
@@ -100,10 +100,9 @@ def _include_submitted_force_push(
 def _revision_history_body(
     *,
     revisions: tuple[PRRevision, ...],
-    repo_full_name: str,
+    repo: RepoAddress,
 ) -> str:
     revisions = revisions[-REVISION_HISTORY_VERSION_LIMIT:]
-    repo_url = f"https://github.com/{repo_full_name}"
     rows = [
         REVISION_HISTORY_COMMENT_MARKER,
         "## Revision history",
@@ -116,18 +115,18 @@ def _revision_history_body(
         changes = _markdown_link(
             f"{short_commit_id(revision.before_commit_id)}.."
             f"{short_commit_id(revision.commit_id)}",
-            f"{repo_url}/compare/{revision.before_commit_id}..{revision.commit_id}",
+            repo.compare_url(revision.before_commit_id, revision.commit_id),
         )
         submitted = _markdown_link(
             short_commit_id(revision.commit_id),
-            f"{repo_url}/commit/{revision.commit_id}",
+            repo.commit_url(revision.commit_id),
         )
         rows.append(f"| {version} | {changes} | {submitted} |")
     if revisions[0].version == 2 and len(revisions) < REVISION_HISTORY_VERSION_LIMIT:
         initial_commit = revisions[0].before_commit_id
         submitted = _markdown_link(
             short_commit_id(initial_commit),
-            f"{repo_url}/commit/{initial_commit}",
+            repo.commit_url(initial_commit),
         )
         rows.append(f"| 1 | Initial version | {submitted} |")
     history_note = (

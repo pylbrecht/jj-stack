@@ -45,6 +45,21 @@ class RepoAddress(Protocol):
         """Return the head label of a pull request whose head is this repo's branch `ref`."""
         ...
 
+    def commit_url(
+        self,
+        commit_id: CommitId,
+    ) -> str:
+        """Return the web page of the repo's commit `commit_id`."""
+        ...
+
+    def compare_url(
+        self,
+        before: CommitId,
+        after: CommitId,
+    ) -> str:
+        """Return the web page of the direct diff from `before` to `after`."""
+        ...
+
     def parse_pr_url_path(
         self,
         path: str,

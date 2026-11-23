@@ -8,6 +8,7 @@ from dataclasses import dataclass
 import jj_stack.ui as ui
 from jj_stack.errors import ErrorHint, ErrorMessage
 from jj_stack.forge.remote_url import parse_remote_url
+from jj_stack.identifiers import CommitId
 from jj_stack.models.git import GitRemote
 
 _MR_URL_PATH_RE = re.compile(r"^/(?P<path>.+)/-/merge_requests/(?P<iid>[0-9]+)/?$")
@@ -35,6 +36,20 @@ class GitlabProjectAddress:
         ref: str,
     ) -> str:
         return f"{self.path}:{ref}"
+
+    def commit_url(
+        self,
+        commit_id: CommitId,
+    ) -> str:
+        return f"https://{self.host}/{self.path}/-/commit/{commit_id}"
+
+    def compare_url(
+        self,
+        before: CommitId,
+        after: CommitId,
+    ) -> str:
+        # Without `straight`, GitLab diffs `after` against the merge base of the two commits.
+        return f"https://{self.host}/{self.path}/-/compare/{before}...{after}?straight=true"
 
     def parse_pr_url_path(
         self,
