@@ -2094,12 +2094,15 @@ def test_submit_reports_published_prs_when_the_overview_update_needs_retrying(
         async def update_issue_comment(
             self,
             *,
+            issue_number: int,
             comment_id: int,
             body: str,
         ):
             if fail_update:
                 raise ForgeError("GitHub request failed: 404", kind="not_found")
-            return await super().update_issue_comment(comment_id=comment_id, body=body)
+            return await super().update_issue_comment(
+                issue_number=issue_number, comment_id=comment_id, body=body
+            )
 
     app = create_app(fake_repo)
 

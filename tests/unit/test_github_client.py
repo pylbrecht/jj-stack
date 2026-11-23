@@ -1237,7 +1237,9 @@ def _delete_overview_comment(status: int) -> bool:
 
     async def run() -> bool:
         async with _github_client(handler) as client:
-            return await delete_stack_overview_comment(comment_id=17, github_client=client)
+            return await delete_stack_overview_comment(
+                comment_id=17, github_client=client, pr_number=2
+            )
 
     return asyncio.run(run())
 

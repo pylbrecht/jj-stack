@@ -101,6 +101,7 @@ async def apply_overview_comment_cleanup(
             deleted = await delete_stack_overview_comment(
                 comment_id=comment.id,
                 github_client=github_client,
+                pr_number=pr_number,
             )
         except CliError as error:
             return (

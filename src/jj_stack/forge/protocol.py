@@ -250,13 +250,20 @@ class Forge(Protocol):
     async def update_issue_comment(
         self,
         *,
+        issue_number: int,
         comment_id: int,
         body: str,
-    ) -> None: ...
+    ) -> None:
+        """Replace the body of comment `comment_id` on pull request `issue_number`.
+
+        A forge that numbers comments per pull request, as GitLab does, needs both.
+        """
+        ...
 
     async def delete_issue_comment(
         self,
         *,
+        issue_number: int,
         comment_id: int,
     ) -> None: ...
 
