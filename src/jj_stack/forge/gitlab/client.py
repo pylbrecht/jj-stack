@@ -9,7 +9,8 @@ import asyncio
 import json
 import logging
 import re
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
+from typing import Any
 from urllib.parse import urlsplit
 
 from pydantic import BaseModel, JsonValue, TypeAdapter, ValidationError
@@ -43,6 +44,15 @@ class GitlabUser(BaseModel):
 
 class _GitlabVersion(BaseModel):
     version: str
+
+
+class _GraphqlError(BaseModel):
+    message: str
+
+
+class _GraphqlAnswer(BaseModel):
+    data: dict[str, dict[str, Any] | None] | None = None
+    errors: list[_GraphqlError] = []
 
 
 class GitlabClient:
@@ -100,16 +110,48 @@ class GitlabClient:
 
             response = await self._request("GET", next_path)
 
+    async def mutate(
+        self,
+        document: str,
+        *,
+        mutation: str,
+        variables: Mapping[str, object],
+    ) -> dict[str, object]:
+        """Run one GraphQL mutation and return its payload.
+
+        GitLab answers 200 both when it rejects the document (top-level `errors`) and when the
+        mutation refuses the change (`errors` in the payload), so both are checked here.
+        """
+
+        answer = _parse(
+            await self._request(
+                "POST", "graphql", body={"query": document, "variables": variables}
+            ),
+            _GraphqlAnswer,
+        )
+        payload = (answer.data or {}).get(mutation) or {}
+        errors = [error.message for error in answer.errors] or payload.get("errors") or []
+        if errors:
+            reason = "; ".join(map(str, errors))[:_FORGE_MESSAGE_LIMIT]
+            raise ForgeError(
+                f"request failed (GitLab refused {mutation}: {reason})",
+                kind="invalid",
+                forge_message=reason,
+            )
+
+        return payload
+
     async def _request(
         self,
         method: str,
         path: str,
         *,
         query: Sequence[tuple[str, str]] = (),
+        body: Mapping[str, object] | None = None,
     ) -> GitlabResponse:
         attempt = 0
         while True:
-            response = await self._transport.request(method, path, query=query)
+            response = await self._transport.request(method, path, query=query, body=body)
             if response.status != 429 or attempt >= _RATE_LIMIT_RETRIES:
                 return response
 

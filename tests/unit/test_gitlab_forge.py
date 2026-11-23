@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 
 import pytest
 
@@ -31,6 +31,7 @@ class _ListTransport:
         path: str,
         *,
         query: Sequence[tuple[str, str]] = (),
+        body: Mapping[str, object] | None = None,
     ) -> GitlabResponse:
         self.paths.append(path)
         return GitlabResponse(

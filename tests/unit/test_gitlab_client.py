@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from urllib.parse import urlencode
 
 import pytest
@@ -29,6 +29,7 @@ class _ScriptedTransport:
         path: str,
         *,
         query: Sequence[tuple[str, str]] = (),
+        body: Mapping[str, object] | None = None,
     ) -> GitlabResponse:
         self.requests.append((method, f"{path}?{urlencode(query)}" if query else path))
         return self._responses.pop(0)
@@ -144,3 +145,28 @@ def test_a_paged_list_follows_each_next_link_until_the_last_page() -> None:
         ("GET", "projects/7/merge_requests?state=opened&per_page=100"),
         ("GET", "projects/7/merge_requests?page=2&per_page=100"),
     ]
+
+
+@pytest.mark.parametrize(
+    "payload",
+    (
+        {"errors": [{"message": "Field 'drafty' doesn't exist on type 'MergeRequest'"}]},
+        {"data": {"mergeRequestSetDraft": {"errors": ["Field 'drafty' doesn't exist"]}}},
+    ),
+)
+def test_graphql_errors_in_a_success_answer_become_forge_errors(
+    payload: object,
+) -> None:
+    client = GitlabClient(_ScriptedTransport(_json_response(200, payload)))
+
+    with pytest.raises(ForgeError) as raised:
+        asyncio.run(
+            client.mutate(
+                "mutation { mergeRequestSetDraft(input: {}) { errors } }",
+                mutation="mergeRequestSetDraft",
+                variables={},
+            )
+        )
+
+    assert raised.value.kind == "invalid"
+    assert "Field 'drafty' doesn't exist" in raised.value.message
