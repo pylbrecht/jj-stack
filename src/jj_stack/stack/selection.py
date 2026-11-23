@@ -4,13 +4,15 @@ from __future__ import annotations
 
 import jj_stack.ui as ui
 from jj_stack.bootstrap import CommandContext
+from jj_stack.config import ForgeKind
 from jj_stack.errors import AmbiguousSelectionError, CliError, UsageError
-from jj_stack.forge.github import resolution
-from jj_stack.forge.github.pr_refs import (
+from jj_stack.forge.pr_refs import (
     parse_pr_number,
     parse_repo_pr_reference,
 )
-from jj_stack.forge.github.resolution import GithubRepoAddress, select_submit_remote
+from jj_stack.forge.protocol import RepoAddress
+from jj_stack.forge.target import parse_forge_repo, select_submit_remote
+from jj_stack.forge.vocabulary import forge_name
 from jj_stack.formatting import format_pr_label
 from jj_stack.identifiers import ChangeId
 from jj_stack.jj.client import JjClient
@@ -30,6 +32,7 @@ def resolve_linked_change_for_pr(
         )
 
     pr_number, repo = resolve_pr_reference(
+        forge=context.config.forge,
         jj_client=context.jj_client,
         pr_reference=pr_reference,
     )
@@ -65,9 +68,10 @@ def resolve_linked_change_for_pr(
 
 def resolve_pr_reference(
     *,
+    forge: ForgeKind,
     jj_client: JjClient,
     pr_reference: str,
-) -> tuple[int, GithubRepoAddress | None]:
+) -> tuple[int, RepoAddress | None]:
     """Resolve a pull-request selector and its repo when one is available."""
 
     pr_number = parse_pr_number(pr_reference)
@@ -78,17 +82,17 @@ def resolve_pr_reference(
         if pr_number is not None:
             return pr_number, None
         raise CliError(
-            t"Could not determine the GitHub repo for {ui.cmd('--pull-request')}; "
+            t"Could not determine the {forge_name()} repo for {ui.cmd('--pull-request')}; "
             t"use a pull request number or fix the selected remote.",
             hint=error.hint,
         ) from error
-    github_repo = resolution.parse_github_repo(remote)
-    if github_repo is None:
+    repo = parse_forge_repo(remote, forge=forge)
+    if repo is None:
         if pr_number is not None:
             return pr_number, None
         raise CliError(
-            t"Could not determine the GitHub repo for {ui.cmd('--pull-request')}; "
+            t"Could not determine the {forge_name()} repo for {ui.cmd('--pull-request')}; "
             t"use a pull request number or fix the selected remote."
         )
 
-    return parse_repo_pr_reference(reference=pr_reference, github_repo=github_repo), github_repo
+    return parse_repo_pr_reference(reference=pr_reference, repo=repo), repo

@@ -8,16 +8,9 @@ import pytest
 from jj_stack.errors import EXIT_FORGE, CliError, resolve_exit_code
 from jj_stack.forge.errors import ForgeError
 from jj_stack.forge.github.client import REPO_NOT_FOUND_REASON, GithubClient
-from jj_stack.forge.github.error_messages import (
-    observe_github_repo,
-    repo_lookup_reason,
-    require_github_target,
-)
-from jj_stack.forge.github.resolution import (
-    GithubRepoAddress,
-    GithubTarget,
-    UnresolvedGithubTarget,
-)
+from jj_stack.forge.github.error_messages import observe_github_repo, repo_lookup_reason
+from jj_stack.forge.github.resolution import GithubRepoAddress
+from jj_stack.forge.target import ForgeTarget, UnresolvedForgeTarget, require_forge_target
 from jj_stack.models.git import GitRemote
 from jj_stack.ui import plain_text
 
@@ -52,14 +45,12 @@ def test_repo_lookup_treats_a_404_as_a_missing_or_hidden_repo() -> None:
 
 def test_require_github_target_reports_the_earliest_resolution_failure() -> None:
     remote = GitRemote(name="origin", fetch_url="file:///repo", push_url="file:///repo")
-    target = GithubTarget(remote=remote, repo=GithubRepoAddress(owner="octo-org", repo="repo"))
+    target = ForgeTarget(remote=remote, repo=GithubRepoAddress(owner="octo-org", repo="repo"))
 
-    assert require_github_target(target) is target
+    assert require_forge_target(target) is target
     with pytest.raises(CliError, match="No Git remote is configured"):
-        require_github_target(UnresolvedGithubTarget())
+        require_forge_target(UnresolvedForgeTarget())
     with pytest.raises(CliError, match="no usable remote"):
-        require_github_target(UnresolvedGithubTarget(remote_error="no usable remote"))
+        require_forge_target(UnresolvedForgeTarget(remote_error="no usable remote"))
     with pytest.raises(CliError, match="not a GitHub URL"):
-        require_github_target(
-            UnresolvedGithubTarget(remote=remote, github_repo_error="not a GitHub URL")
-        )
+        require_forge_target(UnresolvedForgeTarget(remote=remote, repo_error="not a GitHub URL"))

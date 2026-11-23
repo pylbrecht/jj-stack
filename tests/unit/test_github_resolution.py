@@ -3,12 +3,9 @@ from __future__ import annotations
 import pytest
 
 from jj_stack.errors import CliError
-from jj_stack.forge.github.resolution import (
-    parse_github_repo,
-    resolve_trunk_branch,
-    select_submit_remote,
-)
+from jj_stack.forge.github.resolution import parse_github_repo, resolve_trunk_branch
 from jj_stack.forge.models import Repo
+from jj_stack.forge.target import select_submit_remote
 from jj_stack.identifiers import CommitId
 from jj_stack.models.git import GitRemote
 

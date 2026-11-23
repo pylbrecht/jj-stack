@@ -16,8 +16,11 @@ must use jj-stack's branch naming scheme with this checkout's configured prefix,
 here first. PRs with head branches in another repository, such as a contributor's fork, are
 not supported.
 
-Checkout does not rebase changes or modify GitHub. To start a new change on top, run `jj new`
+Checkout does not rebase changes or modify the forge. To start a new change on top, run `jj new`
 afterward.
+
+On GitLab, `--pull-request` takes a merge request's number or URL, and `--pick` lists only local
+stacks, since GitLab has no stack object.
 
 In terminals with hyperlink support, the PR beside "Top" in each GitHub stack's `--pick` entry
 is a clickable link. Open it to inspect that stack on GitHub before choosing an entry.
@@ -40,19 +43,16 @@ from jj_stack.errors import CliError, UsageError
 from jj_stack.forge.errors import ForgeError
 from jj_stack.forge.github.error_messages import observe_github_repo
 from jj_stack.forge.github.models import GithubStack
-from jj_stack.forge.github.pr_refs import (
+from jj_stack.forge.models import PullRequest
+from jj_stack.forge.pr_refs import (
     load_pr,
     managed_pr_head_problem,
     parse_repo_pr_reference,
     require_managed_pr_head,
 )
-from jj_stack.forge.github.resolution import (
-    GithubRepoAddress,
-    require_github_repo,
-    select_submit_remote,
-)
-from jj_stack.forge.models import PullRequest
-from jj_stack.forge.protocol import Forge
+from jj_stack.forge.protocol import Forge, RepoAddress
+from jj_stack.forge.target import require_forge_repo, select_submit_remote
+from jj_stack.forge.vocabulary import forge_name, forge_vocabulary
 from jj_stack.formatting import format_pr_label
 from jj_stack.identifiers import ChangeId, CommitId, short_change_id
 from jj_stack.jj.client import JjClient
@@ -100,13 +100,13 @@ def checkout(
 ) -> int:
     """CLI entrypoint for `checkout`."""
 
-    context = bootstrap_context(global_options)
+    context = bootstrap_context(global_options, forges=("github", "gitlab"))
     result = asyncio.run(_checkout_async(context=context, pick=pick, pr=pr, revset=revset))
     if result.fetched_tip_commit is not None:
         console.output(ui.PrefixedLine("Fetched PR head commit: ", result.fetched_tip_commit))
     if result.adopted_count:
-        noun = "PR" if result.adopted_count == 1 else "PRs"
-        console.output(f"Saved pull request links for {result.adopted_count} {noun}.")
+        count = forge_vocabulary().pr_count(result.adopted_count)
+        console.output(f"Saved pull request links for {count}.")
     elif result.stack.changes:
         console.output("Saved pull request links are already up to date for this stack.")
     else:
@@ -131,7 +131,7 @@ async def _checkout_async(
     if not pick and pr is None:
         return await _adopt_under_lock(context, lambda: _checkout_saved_stack(context, revset))
     remote = select_submit_remote(context.jj_client.list_git_remotes())
-    repo = require_github_repo(remote)
+    repo = require_forge_repo(remote, forge=context.config.forge)
     async with context.open_forge(repo=repo) as github_client:
         if pick:
             choice = await _pick_stack(context, github_client=github_client, repo=repo)
@@ -198,14 +198,14 @@ async def _checkout_pr_stack(
     context: CommandContext,
     github_client: Forge,
     remote: GitRemote,
-    repo: GithubRepoAddress,
+    repo: RepoAddress,
     pr_reference: str,
 ) -> CheckoutResult:
     client = context.jj_client
     state = context.state_store.load()
     pr_number = parse_repo_pr_reference(
         reference=pr_reference,
-        github_repo=repo,
+        repo=repo,
     )
     top_pr = await load_pr(
         github_client=github_client,
@@ -224,7 +224,8 @@ async def _checkout_pr_stack(
         raise CliError(
             t"{pr_label} and remote branch "
             t"{ui.bookmark(top_pr.head.ref)} no longer identify the same commit.",
-            hint="Retry in a moment; GitHub may still be catching up with a recent push.",
+            hint=f"Retry in a moment; {forge_name()} may still be catching up with a recent "
+            "push.",
         )
 
     # A hidden local copy of the head still needs the import so it becomes visible again.
@@ -333,11 +334,12 @@ def _describe_added_commit(client: JjClient, remote: str, commit: LocalCommit) -
 async def _load_pr_chain(
     *,
     github_client: Forge,
-    repo: GithubRepoAddress,
+    repo: RepoAddress,
     top: PullRequest,
 ) -> tuple[PullRequest, ...]:
     """Follow PR base branches from the selected PR to trunk."""
 
+    pr = forge_vocabulary().pr_noun
     namespace = current_pr_branch_namespace()
     top_down = [top]
     seen = {top.head.ref}
@@ -347,7 +349,7 @@ async def _load_pr_chain(
             raise CliError(
                 t"Pull request base branches point at each other in a loop, starting at "
                 t"{ui.bookmark(base)}.",
-                hint=t"Retarget one of those pull requests on GitHub so the stack has a "
+                hint=t"Retarget one of those pull requests on {forge_name()} so the stack has a "
                 t"bottom, then rerun {ui.cmd('jj-stack checkout')}.",
             )
         seen.add(base)
@@ -361,9 +363,9 @@ async def _load_pr_chain(
         if len(matches) != 1:
             raise CliError(
                 t"PR base branch {ui.bookmark(base)} must belong to one open pull request, "
-                t"but GitHub reports {len(matches)}.",
-                hint=t"Check the PR's base branch on GitHub. To link a known open PR to a "
-                t"local change, run {ui.cmd('jj-stack relink <pr> <change-id>')}.",
+                t"but {forge_name()} reports {len(matches)}.",
+                hint=t"Check the {pr}'s base branch on {forge_name()}. To link a known open {pr} "
+                t"to a local change, run {ui.cmd('jj-stack relink <pr> <change-id>')}.",
             )
         parent = matches[0]
         require_managed_pr_head(
@@ -385,10 +387,11 @@ def _save_checkout_tracking(
 ) -> int:
     changes = stack.changes[: len(prs)]
     if len(changes) < len(prs):
+        pr = forge_vocabulary().pr_noun
         raise CliError(
             "The selected pull requests do not describe the stack that was just fetched.",
-            hint=t"Compare {ui.cmd('jj log')} with the PRs on GitHub. Use "
-            t"{ui.cmd('jj-stack submit')} to update the PRs from local history, or "
+            hint=t"Compare {ui.cmd('jj log')} with the {pr}s on {forge_name()}. Use "
+            t"{ui.cmd('jj-stack submit')} to update the {pr}s from local history, or "
             t"{ui.cmd('jj-stack relink <pr> <change-id>')} to repair a saved link.",
         )
     # The stack was discovered from the top PR's head, so any changes above the top PR's own
@@ -413,7 +416,8 @@ def _save_checkout_tracking(
             raise CliError(
                 t"{pr_label} and branch "
                 t"{ui.bookmark(pr.head.ref)} no longer identify the same commit.",
-                hint="Retry in a moment; GitHub may still be catching up with a recent push.",
+                hint=f"Retry in a moment; {forge_name()} may still be catching up with a recent "
+                "push.",
             )
         replacements[change.change_id] = TrackedPR(
             pr_identity=PRIdentity(
@@ -443,7 +447,7 @@ async def _pick_stack(
     context: CommandContext,
     *,
     github_client: Forge,
-    repo: GithubRepoAddress,
+    repo: RepoAddress,
 ) -> CheckoutPickerChoice:
     """Prompt for one local or GitHub stack without holding the operation lock."""
 
@@ -517,7 +521,7 @@ def _picker_choices(
     github_stacks: tuple[GithubStack, ...],
     local_stacks: list[LocalStack],
     prs: dict[int, PullRequest | None],
-    repo: GithubRepoAddress,
+    repo: RepoAddress,
     state: TrackingState,
     visible_commit_ids: set[CommitId],
 ) -> tuple[CheckoutPickerChoice, ...]:

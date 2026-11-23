@@ -10,8 +10,9 @@ from __future__ import annotations
 import asyncio
 import os
 from collections.abc import Awaitable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Protocol
+from urllib.parse import urlencode
 
 from jj_stack.forge.errors import ForgeError
 from jj_stack.timing import timed
@@ -69,14 +70,17 @@ def parse_glab_include_output(
 class GitlabTransport(Protocol):
     """Deliver one GitLab API request and return its HTTP answer, whatever the status.
 
-    `path` is relative to the host's `/api/v4/`. A transport raises `ForgeError` only when no
-    HTTP answer arrived.
+    `path` is relative to the host's `/api/v4/` and may already carry a query string, as the
+    `next` link of a paged answer does. A transport raises `ForgeError` only when no HTTP answer
+    arrived.
     """
 
     async def request(
         self,
         method: str,
         path: str,
+        *,
+        query: Sequence[tuple[str, str]] = (),
     ) -> GitlabResponse: ...
 
 
@@ -118,6 +122,12 @@ async def run_subprocess(
     return CommandRun(returncode=process.returncode or 0, stdout=stdout, stderr=stderr)
 
 
+@dataclass(slots=True)
+class _WarmUp:
+    lock: asyncio.Lock = field(default_factory=asyncio.Lock)
+    done: bool = False
+
+
 @dataclass(frozen=True, slots=True)
 class GlabTransport:
     """Send requests as `<command> api` calls, such as `glab api` or a wrapper around it.
@@ -125,13 +135,36 @@ class GlabTransport:
     `hostname` is the Git remote's host, which is also the key of the host in glab's config.
     It is always passed, because glab otherwise guesses the host from a `.git` directory that
     a non-colocated jj repo lacks, and falls back to another host without saying so.
+
+    The first request runs alone: glab may refresh and save its login during a call, and
+    parallel calls that each do so can overwrite each other's saved login.
     """
 
     command: Sequence[str]
     hostname: str
     runner: CommandRunner
+    _warm_up: _WarmUp = field(default_factory=_WarmUp, init=False)
 
     async def request(
+        self,
+        method: str,
+        path: str,
+        *,
+        query: Sequence[tuple[str, str]] = (),
+    ) -> GitlabResponse:
+        if query:
+            path = f"{path}?{urlencode(query)}"
+
+        if not self._warm_up.done:
+            async with self._warm_up.lock:
+                if not self._warm_up.done:
+                    response = await self._send(method, path)
+                    self._warm_up.done = True
+                    return response
+
+        return await self._send(method, path)
+
+    async def _send(
         self,
         method: str,
         path: str,

@@ -20,6 +20,7 @@ from typing import TypedDict, final, overload
 import jj_stack.ui as ui
 from jj_stack.errors import CliError, DriftCondition, DriftError
 from jj_stack.forge.models import PullRequest
+from jj_stack.forge.vocabulary import forge_name
 from jj_stack.formatting import format_pr_label
 from jj_stack.identifiers import ChangeId, CommitId, short_change_id
 from jj_stack.models.stack import LocalCommit, LocalStack
@@ -216,7 +217,7 @@ class LookupFailed(Stop, _State):
 
     @property
     def repair(self) -> Template:
-        return t"run {ui.cmd('jj-stack doctor')} to check GitHub access"
+        return t"run {ui.cmd('jj-stack doctor')} to check {forge_name()} access"
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -231,7 +232,7 @@ class PRMissing(Stop, _State):
     @property
     def reason(self) -> Message:
         saved_label = format_pr_label(self.tracked.pr_identity.pr_number)
-        reason: Message = t"GitHub no longer reports {saved_label}"
+        reason: Message = t"{forge_name()} no longer reports {saved_label}"
         if self.open_prs_on_branch:
             others = ui.join(_pr_label, self.open_prs_on_branch)
             reason = t"{reason}; its PR branch {self._branch_label()} has open {others}"
@@ -272,7 +273,7 @@ class PRAmbiguous(Stop, _State):
     def reason(self) -> Message:
         numbers = ui.join(_pr_label, self.open_prs_on_branch)
         return (
-            t"GitHub reports several open pull requests for PR branch "
+            t"{forge_name()} reports several open pull requests for PR branch "
             t"{self._branch_label()}: {numbers}"
         )
 
@@ -354,8 +355,8 @@ class BranchClaimed(Stop, _State):
     @property
     def repair(self) -> Template:
         return (
-            t"check the branch's work on GitHub before moving or deleting it, or choose another "
-            t"PR branch name by editing the subject with "
+            t"check the branch's work on {forge_name()} before moving or deleting it, or choose "
+            t"another PR branch name by editing the subject with "
             t"{ui.cmd(f'jj describe {short_change_id(self.change_id)}')}"
         )
 
@@ -376,7 +377,7 @@ class PRHeadMoved(Stop, WithPR):
         source = (
             "the PR branch was updated outside this repo"
             if self.rewrite_checked
-            else "the PR branch changed on GitHub"
+            else f"the PR branch changed on {forge_name()}"
         )
         return (
             t"{_pr_label(self.pr)} is at commit {ui.commit_id(head)}, which matches neither this "
@@ -415,7 +416,7 @@ class BranchMissing(Stop, WithPR):
                 t"saved link and stack overview comment"
             )
         return (
-            t"restore the branch, or close {_pr_label(self.pr)} on GitHub and run "
+            t"restore the branch, or close {_pr_label(self.pr)} on {forge_name()} and run "
             t"{ui.cmd(f'jj-stack cleanup --pull-request {self.pr.number}')}"
         )
 
@@ -439,7 +440,7 @@ class BranchDisagrees(Stop, WithPR):
     def repair(self) -> Template:
         return (
             t"check the PR with {ui.cmd(f'jj-stack view {short_change_id(self.change_id)}')}; "
-            t"GitHub may still be catching up with a recent push"
+            t"{forge_name()} may still be catching up with a recent push"
         )
 
 

@@ -1,17 +1,20 @@
-"""Shared Git remote and GitHub target resolution helpers."""
+"""Read the GitHub repo that a Git remote names, and the base branch at trunk."""
 
 from __future__ import annotations
 
+import re
 from collections.abc import Sequence
 from dataclasses import dataclass
 
 import jj_stack.ui as ui
-from jj_stack.errors import CliError, ErrorHint, ErrorMessage, error_message
+from jj_stack.errors import CliError, ErrorHint, ErrorMessage
 from jj_stack.forge.models import Repo
 from jj_stack.forge.remote_url import parse_remote_url
 from jj_stack.identifiers import CommitId
 from jj_stack.models.git import GitRemote
 from jj_stack.pr_branch_namespace import current_pr_branch_namespace
+
+_PR_URL_PATH_RE = re.compile(r"^/(?P<owner>[^/]+)/(?P<repo>[^/]+)/pull/(?P<number>[0-9]+)/?$")
 
 
 @dataclass(frozen=True, slots=True)
@@ -25,55 +28,27 @@ class GithubRepoAddress:
     def full_name(self) -> str:
         return f"{self.owner}/{self.repo}"
 
+    def pr_url(
+        self,
+        pr_number: int,
+    ) -> str:
+        return f"https://github.com/{self.full_name}/pull/{pr_number}"
 
-@dataclass(frozen=True, slots=True)
-class GithubTarget:
-    """A fully resolved GitHub target: the selected Git remote and its repo."""
+    def head_label(
+        self,
+        ref: str,
+    ) -> str:
+        return f"{self.owner}:{ref}"
 
-    remote: GitRemote
-    repo: GithubRepoAddress
+    def parse_pr_url_path(
+        self,
+        path: str,
+    ) -> tuple[str, int] | None:
+        match = _PR_URL_PATH_RE.fullmatch(path)
+        if match is None:
+            return None
 
-    # A resolved target carries no diagnostics. These mirror UnresolvedGithubTarget so
-    # degraded-mode consumers can read errors off either arm without narrowing.
-    @property
-    def remote_error(self) -> None:
-        return None
-
-    @property
-    def github_repo_error(self) -> None:
-        return None
-
-
-@dataclass(frozen=True, slots=True)
-class UnresolvedGithubTarget:
-    """A GitHub target that could not be fully resolved.
-
-    Encodes three degraded states:
-
-    - no Git remotes exist at all: every field is None
-    - remote selection failed: only `remote_error` is set
-    - a remote resolved but is not a GitHub remote: `remote` and
-      `github_repo_error` are set
-    """
-
-    remote: GitRemote | None = None
-    remote_error: ErrorMessage | None = None
-    github_repo_error: ErrorMessage | None = None
-
-
-def select_submit_remote(remotes: tuple[GitRemote, ...]) -> GitRemote:
-    """Resolve the Git remote used by stack commands."""
-
-    remotes_by_name = {remote.name: remote for remote in remotes}
-    if "origin" in remotes_by_name:
-        return remotes_by_name["origin"]
-    if len(remotes) == 1:
-        return remotes[0]
-    raise CliError(
-        "Could not determine which Git remote to use.",
-        hint=t"Run {ui.cmd('jj git remote list')} to check the remotes. Name the intended "
-        t"remote {ui.bookmark('origin')}, or configure exactly one remote.",
-    )
+        return f"{match['owner']}/{match['repo']}", int(match["number"])
 
 
 def parse_github_repo(remote: GitRemote) -> GithubRepoAddress | None:
@@ -96,29 +71,7 @@ def _parse_github_url(remote_url: str) -> GithubRepoAddress | None:
     return GithubRepoAddress(owner=owner, repo=repo)
 
 
-def resolve_github_target(
-    remotes: tuple[GitRemote, ...],
-) -> GithubTarget | UnresolvedGithubTarget:
-    """Resolve the optional remote/GitHub target used by read-mostly commands."""
-
-    if not remotes:
-        return UnresolvedGithubTarget()
-    try:
-        remote = select_submit_remote(remotes)
-    except CliError as error:
-        return UnresolvedGithubTarget(remote_error=error_message(error))
-
-    github_repo = parse_github_repo(remote)
-    if github_repo is None:
-        message, hint = _github_repo_failure(remote)
-        return UnresolvedGithubTarget(
-            remote=remote,
-            github_repo_error=(message, " ", hint),
-        )
-    return GithubTarget(remote=remote, repo=github_repo)
-
-
-def _github_repo_failure(remote: GitRemote) -> tuple[ErrorMessage, ErrorHint]:
+def github_repo_failure(remote: GitRemote) -> tuple[ErrorMessage, ErrorHint]:
     """Say why a remote does not name one GitHub repo, and what to do about it.
 
     A remote with a single URL that is not `owner/repo` has nothing to disagree with itself
@@ -136,16 +89,6 @@ def _github_repo_failure(remote: GitRemote) -> tuple[ErrorMessage, ErrorHint]:
         t"{ui.code(remote.fetch_url)}.",
         t"Point {name} at a GitHub URL such as {ui.code('https://github.com/owner/repo.git')}.",
     )
-
-
-def require_github_repo(remote: GitRemote) -> GithubRepoAddress:
-    """Parse a GitHub repo target or raise a user-facing CLI error."""
-
-    github_repo = parse_github_repo(remote)
-    if github_repo is not None:
-        return github_repo
-    message, hint = _github_repo_failure(remote)
-    raise CliError(message, hint=hint)
 
 
 def resolve_trunk_branch(

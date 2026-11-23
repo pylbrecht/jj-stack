@@ -48,9 +48,8 @@ from jj_stack.errors import (
     resolve_exit_code,
 )
 from jj_stack.forge.errors import ForgeError
-from jj_stack.forge.github.error_messages import require_github_target
-from jj_stack.forge.github.resolution import resolve_github_target
 from jj_stack.forge.github.run import GithubRun, ObservedTrunk
+from jj_stack.forge.target import require_forge_target, resolve_forge_target
 from jj_stack.formatting import format_pr_label
 from jj_stack.identifiers import ChangeId, CommitId, is_change_id_prefix, short_change_id
 from jj_stack.jj.client import quote_revset_symbol
@@ -117,7 +116,9 @@ async def _sync_async(
     pr: str | None,
     revset: str | None,
 ) -> int:
-    target = require_github_target(resolve_github_target(context.jj_client.list_git_remotes()))
+    target = require_forge_target(
+        resolve_forge_target(context.jj_client.list_git_remotes(), forge=context.config.forge)
+    )
     async with context.open_forge(repo=target.repo) as github:
         run = GithubRun(context=context, dry_run=dry_run, github=github, target=target)
         if all_:

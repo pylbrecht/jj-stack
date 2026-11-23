@@ -4,15 +4,17 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass, field
-from typing import Literal, Protocol
+from typing import TYPE_CHECKING, Literal, Protocol
 
 import jj_stack.console as console
 import jj_stack.ui as ui
-from jj_stack.forge.github.resolution import GithubRepoAddress
 from jj_stack.forge.models import PullRequest
 from jj_stack.identifiers import ChangeId, CommitId
 from jj_stack.models.tracking import PRIdentity
 from jj_stack.ui import Message
+
+if TYPE_CHECKING:
+    from jj_stack.forge.protocol import RepoAddress
 
 _CHECK_POLL_INTERVAL_SECONDS = 10.0
 
@@ -48,7 +50,7 @@ class MergeResult:
 class MergeExecutionInputs:
     """Mutation dependencies independent of normal stack/status preparation."""
 
-    repo: GithubRepoAddress
+    repo: RepoAddress
     selected_head: str
     sync_head: str
     trunk_branch: str

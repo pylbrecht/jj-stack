@@ -8,8 +8,11 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import re
+from collections.abc import Sequence
+from urllib.parse import urlsplit
 
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel, JsonValue, TypeAdapter, ValidationError
 
 from jj_stack.forge.errors import ForgeError, ForgeErrorKind
 from jj_stack.forge.gitlab.transport import GitlabResponse, GitlabTransport
@@ -20,6 +23,8 @@ _RATE_LIMIT_RETRIES = 3
 _RATE_LIMIT_BACKOFF_SECONDS = 1.0
 _MAX_RATE_LIMIT_WAIT_SECONDS = 60.0
 _FORGE_MESSAGE_LIMIT = 300
+_PAGE_SIZE = "100"
+_NEXT_LINK_RE = re.compile(r'<([^>]+)>;\s*rel="next"')
 
 _STATUS_ERROR_KINDS: dict[int, ForgeErrorKind] = {
     400: "invalid",
@@ -59,14 +64,52 @@ class GitlabClient:
 
         return _parse(await self._request("GET", "version"), _GitlabVersion).version
 
+    async def get[ModelT: BaseModel](
+        self,
+        path: str,
+        *,
+        model: type[ModelT],
+        query: Sequence[tuple[str, str]] = (),
+    ) -> ModelT:
+        """Read one object, such as a project or a merge request."""
+
+        return _parse(await self._request("GET", path, query=query), model)
+
+    async def get_pages[ModelT: BaseModel](
+        self,
+        path: str,
+        *,
+        model: type[ModelT],
+        query: Sequence[tuple[str, str]] = (),
+    ) -> list[ModelT]:
+        """Read every page of a list, following the `next` link of each answer."""
+
+        items: list[ModelT] = []
+        response = await self._request("GET", path, query=(*query, ("per_page", _PAGE_SIZE)))
+        while True:
+            # `list[model]` is not a valid type for a type variable, so validate each item.
+            page = _parse(response, list[JsonValue])
+            try:
+                items.extend(model.model_validate(item) for item in page)
+            except ValidationError as error:
+                raise _unexpected_answer(error) from error
+
+            next_path = _next_page_path(response)
+            if next_path is None:
+                return items
+
+            response = await self._request("GET", next_path)
+
     async def _request(
         self,
         method: str,
         path: str,
+        *,
+        query: Sequence[tuple[str, str]] = (),
     ) -> GitlabResponse:
         attempt = 0
         while True:
-            response = await self._transport.request(method, path)
+            response = await self._transport.request(method, path, query=query)
             if response.status != 429 or attempt >= _RATE_LIMIT_RETRIES:
                 return response
 
@@ -85,7 +128,21 @@ class GitlabClient:
             attempt += 1
 
 
-def _parse[ModelT: BaseModel](
+def _next_page_path(
+    response: GitlabResponse,
+) -> str | None:
+    """Return the `next` link as a path below `/api/v4/`, or None on the last page."""
+
+    match = _NEXT_LINK_RE.search(response.headers.get("link", ""))
+    if match is None:
+        return None
+
+    url = urlsplit(match[1])
+    path = url.path.partition("/api/v4/")[2]
+    return f"{path}?{url.query}" if url.query else path
+
+
+def _parse[ModelT](
     response: GitlabResponse,
     model: type[ModelT],
 ) -> ModelT:
@@ -103,12 +160,18 @@ def _parse[ModelT: BaseModel](
         )
 
     try:
-        return model.model_validate_json(response.body)
+        return TypeAdapter(model).validate_json(response.body)
     except ValidationError as error:
-        raise ForgeError(
-            f"request failed (unexpected GitLab answer: {error.error_count()} problems)",
-            kind="unavailable",
-        ) from error
+        raise _unexpected_answer(error) from error
+
+
+def _unexpected_answer(
+    error: ValidationError,
+) -> ForgeError:
+    return ForgeError(
+        f"request failed (unexpected GitLab answer: {error.error_count()} problems)",
+        kind="unavailable",
+    )
 
 
 def _status_error(

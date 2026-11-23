@@ -5,9 +5,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from jj_stack.bootstrap import CommandContext
-from jj_stack.forge.github.resolution import GithubTarget
 from jj_stack.forge.models import Repo
 from jj_stack.forge.protocol import Forge
+from jj_stack.forge.target import ForgeTarget
 
 
 @dataclass(frozen=True, slots=True)
@@ -23,5 +23,5 @@ class GithubRun:
     context: CommandContext
     dry_run: bool
     github: Forge
-    target: GithubTarget
+    target: ForgeTarget
     trunk: ObservedTrunk | None = None

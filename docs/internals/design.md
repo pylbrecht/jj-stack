@@ -15,6 +15,11 @@ forge. The rules below apply to any forge unless they are stated for GitHub alon
 variant**. A GitHub behaviour cited only as the reason for a rule does not limit that rule to
 GitHub.
 
+GitLab support is in progress: `doctor`, `list`, `view`, and `checkout` run on GitLab, and every
+other command stops before it reads or changes anything. On GitLab a pull request is a merge
+request (MR) and its PR number is the project-scoped iid. Rules stated for GitLab alone are
+**GitLab variants**.
+
 A **forge rebase** rebases PRs on the forge without merging them. On GitHub it is a rebase of a
 complete native GitHub stack through GitHub's UI.
 
@@ -686,6 +691,10 @@ whether it is already local. Choosing an untracked or partially tracked stack pa
 active PR through the same adoption path as `--pull-request`; the picker does not create another
 tracking path.
 
+GitLab variant: `--pick` offers only locally tracked paths, since GitLab has no stack resource.
+An MR whose source branch is in another project, such as a fork, is refused like a GitHub PR
+whose head is in another repo.
+
 When the selected PR's exact head commit is not visible locally, `checkout` fetches ordinary
 remote state and imports it through a temporary ref as a visible mutable commit; if that change
 already exists locally at another commit, or the head sits above the PR's own change, `checkout`
@@ -738,6 +747,14 @@ rebased since its last submit; they never infer a review decision the forge leav
 queued PRs, and changes with a reported problem are excluded. Details are discarded if the PR head
 or base changes during the lookup. GitHub computes merge state lazily, so
 an unknown state is not reported or polled.
+
+GitLab variant: GitLab has no server-side stack, so every MR lands on its own target branch.
+Readiness, conflicts, and the need to rebase come from the MR's `detailed_merge_status`; any other
+status that refuses the merge counts as blocked, and a status GitLab is still computing has no
+answer. Checks are the MR's head pipeline, approvals count every approver of the MR, and the
+review decision is `not_approved` or `requested_changes` from that status, or approved once the
+MR's approval rules are met. Merge details show the merge status and the head pipeline, without
+review threads. Human output names an MR `MR !<iid>`; JSON keeps the PR field names.
 
 Neither command guesses. A change with no saved PR identity is reported as not submitted,
 even if a PR happens to use the branch name that change would generate. A saved PR is always

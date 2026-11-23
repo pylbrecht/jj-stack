@@ -22,6 +22,7 @@ from ..support.integration_helpers import (
     init_fake_github_repo,
     init_fake_github_repo_with_submitted_feature,
     init_fake_github_repo_with_submitted_stack,
+    init_fake_gitlab_stack,
     patch_github_client_builders,
     run_command,
     selected_stack,
@@ -767,3 +768,87 @@ def test_view_and_list_report_readiness_approvals_and_lag_behind_trunk(
     assert "behind" not in capsys.readouterr().out
     assert run_main(repo, config_path, "list") == 0
     assert "behind" not in capsys.readouterr().out
+
+
+def _checked_out_gitlab_stack(
+    *,
+    monkeypatch,
+    tmp_path: Path,
+    capsys,
+) -> tuple[Path, Path]:
+    """Link a two-MR GitLab stack: the bottom MR is approved and its pipeline passed."""
+
+    repo, config_path, host = init_fake_gitlab_stack(
+        monkeypatch=monkeypatch,
+        tmp_path=tmp_path,
+        size=2,
+    )
+    assert host.project is not None
+    bottom, top = host.project.prs[1], host.project.prs[2]
+    bottom.pipeline_status = "success"
+    bottom.approvals_required = 1
+    bottom.approved_by = ["reviewer"]
+    top.pipeline_status = "failed"
+    top.detailed_merge_status = "not_approved"
+    assert run_main(repo, config_path, "checkout", "--pull-request", "2") == 0
+    capsys.readouterr()
+    return repo, config_path
+
+
+def test_view_on_gitlab_reports_mrs_with_their_pipelines_and_approvals(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    repo, config_path = _checked_out_gitlab_stack(
+        monkeypatch=monkeypatch,
+        tmp_path=tmp_path,
+        capsys=capsys,
+    )
+
+    exit_code = run_main(repo, config_path, "view")
+    output = " ".join(capsys.readouterr().out.split())
+
+    assert exit_code == 0
+    assert "MR !1: 1 approval, checks passed" in output
+    assert "MR !2: needs review, checks failed" in output
+    assert "PR" not in output
+
+
+def test_view_json_on_gitlab_keeps_the_pr_fields_with_the_mr_iid(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    repo, config_path = _checked_out_gitlab_stack(
+        monkeypatch=monkeypatch,
+        tmp_path=tmp_path,
+        capsys=capsys,
+    )
+
+    exit_code = run_main(repo, config_path, "view", "--json")
+    payload = json.loads(capsys.readouterr().out)
+
+    assert exit_code == 0
+    assert_json_output_matches_schema(payload, "view")
+    prs = [change["pr"] for change in payload["stacks"][0]["changes"]]
+    assert [(pr["number"], pr["checks"]) for pr in prs] == [(2, "failed"), (1, "passed")]
+
+
+def test_view_selects_a_gitlab_stack_by_its_mr_url(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    repo, config_path = _checked_out_gitlab_stack(
+        monkeypatch=monkeypatch,
+        tmp_path=tmp_path,
+        capsys=capsys,
+    )
+    url = "https://gitlab.test/platform/tools/stacked-mrs/-/merge_requests/1"
+
+    exit_code = run_main(repo, config_path, "view", "--pull-request", url)
+    output = " ".join(capsys.readouterr().out.split())
+
+    assert exit_code == 0
+    assert "Using MR !1 for change" in output

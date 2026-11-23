@@ -26,10 +26,31 @@ from jj_stack.models.stack import LocalCommit
 
 
 class RepoAddress(Protocol):
-    """Where the forge's repo lives, as far as messages and links need it."""
+    """Where the forge's repo lives, as far as messages, links, and PR references need it."""
 
     @property
     def full_name(self) -> str: ...
+
+    def pr_url(
+        self,
+        pr_number: int,
+    ) -> str:
+        """Return the web page of the repo's pull request `pr_number`."""
+        ...
+
+    def head_label(
+        self,
+        ref: str,
+    ) -> str:
+        """Return the head label of a pull request whose head is this repo's branch `ref`."""
+        ...
+
+    def parse_pr_url_path(
+        self,
+        path: str,
+    ) -> tuple[str, int] | None:
+        """Read the repo's full name and the PR number from a pull request URL's path."""
+        ...
 
 
 class StackObjects(Protocol):

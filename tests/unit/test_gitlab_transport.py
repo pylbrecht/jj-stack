@@ -119,3 +119,60 @@ def test_a_command_that_returns_no_http_answer_raises_a_forge_error(
 
     assert raised.value.kind == "unavailable"
     assert message in raised.value.message
+
+
+class _RecordingRunner:
+    """Answer every command with 200, and record each argument list and peak concurrency."""
+
+    def __init__(self) -> None:
+        self.argvs: list[tuple[str, ...]] = []
+        self.running = 0
+        self.peaks: list[int] = []
+
+    async def __call__(
+        self,
+        argv,
+        *,
+        stdin,
+        env,
+    ) -> CommandRun:
+        self.argvs.append(tuple(argv))
+        self.running += 1
+        self.peaks.append(self.running)
+        await asyncio.sleep(0)
+        self.running -= 1
+        return CommandRun(
+            returncode=0,
+            stdout=b"HTTP/2.0 200 OK\nContent-Type: application/json\r\n\r\n{}",
+            stderr=b"",
+        )
+
+
+def test_query_parameters_are_sent_url_encoded_in_the_path() -> None:
+    runner = _RecordingRunner()
+    transport = GlabTransport(command=("glab",), hostname="gitlab.test", runner=runner)
+
+    asyncio.run(
+        transport.request(
+            "GET",
+            "projects/1/merge_requests",
+            query=(("source_branch", "jj-stack/a b"), ("iids[]", "3")),
+        )
+    )
+
+    assert runner.argvs[0][2] == (
+        "projects/1/merge_requests?source_branch=jj-stack%2Fa+b&iids%5B%5D=3"
+    )
+
+
+def test_the_first_request_runs_alone_before_later_requests_run_together() -> None:
+    runner = _RecordingRunner()
+    transport = GlabTransport(command=("glab",), hostname="gitlab.test", runner=runner)
+
+    async def requests() -> None:
+        await asyncio.gather(*(transport.request("GET", f"path/{n}") for n in range(3)))
+
+    asyncio.run(requests())
+
+    assert runner.peaks[0] == 1
+    assert max(runner.peaks[1:]) == 2

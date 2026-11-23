@@ -66,8 +66,10 @@ you still set the older `git.sign-on-push = true`, jj treats it as
 
 ## GitLab
 
-GitLab support is in progress. So far only `jj-stack doctor` works with a GitLab project; other
-commands stop before they read or change anything. To select GitLab for a repo:
+GitLab support is in progress. So far `jj-stack doctor`, `jj-stack list`, `jj-stack view`, and
+`jj-stack checkout` work with a GitLab project; other commands stop before they read or change
+anything. Human output says MR and references a merge request as `!12`; `--pull-request` takes
+the MR's number or its URL. To select GitLab for a repo:
 
 ```toml
 [jj-stack]

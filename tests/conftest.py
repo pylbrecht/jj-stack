@@ -6,6 +6,7 @@ from contextlib import contextmanager
 import pytest
 
 import jj_stack.console as console
+from jj_stack.forge.vocabulary import install_forge_vocabulary
 from jj_stack.pr_branch_namespace import install_pr_branch_namespace
 from tests.support import integration_helpers
 
@@ -25,9 +26,10 @@ def _install_default_terminal(monkeypatch: pytest.MonkeyPatch) -> None:
 
 @pytest.fixture(autouse=True)
 def _install_default_pr_branch_namespace() -> None:
-    """Reset the process-wide PR branch policy before each test."""
+    """Reset the process-wide PR branch policy and forge vocabulary before each test."""
 
     install_pr_branch_namespace("jj-stack")
+    install_forge_vocabulary("github")
 
 
 @pytest.fixture(autouse=True)

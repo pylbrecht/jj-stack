@@ -47,17 +47,17 @@ from jj_stack.errors import (
     error_message,
 )
 from jj_stack.forge.errors import ForgeError
-from jj_stack.forge.github.error_messages import remote_and_github_unavailable_messages
 from jj_stack.forge.github.models import GithubStack
 from jj_stack.forge.github.overview_comments import STACK_OVERVIEW_COMMENT_MARKER
-from jj_stack.forge.github.resolution import (
-    GithubTarget,
-    UnresolvedGithubTarget,
-    resolve_github_target,
-)
 from jj_stack.forge.github.run import GithubRun
 from jj_stack.forge.models import PRComment, PullRequest, Repo
 from jj_stack.forge.protocol import Forge
+from jj_stack.forge.target import (
+    ForgeTarget,
+    UnresolvedForgeTarget,
+    forge_unavailable_messages,
+    resolve_forge_target,
+)
 from jj_stack.formatting import format_pr_label
 from jj_stack.identifiers import ChangeId, short_change_id
 from jj_stack.jj.client import PRRefUpdate
@@ -87,7 +87,7 @@ class PreparedCleanup:
     close_open_prs: bool
     context: CommandContext
     dry_run: bool
-    github_target: GithubTarget | UnresolvedGithubTarget
+    github_target: ForgeTarget | UnresolvedForgeTarget
     state: TrackingState
     # Dry-run previews assume these PRs lose their dependents and these changes leave history.
     preview_detached_dependents: frozenset[int] = frozenset()
@@ -153,10 +153,10 @@ def _run_cleanup_command(prepared_cleanup: PreparedCleanup) -> int:
     """Render and run cleanup for the selected pull requests."""
 
     github_target = prepared_cleanup.github_target
-    if prepared_cleanup.candidates and isinstance(github_target, UnresolvedGithubTarget):
-        for message in remote_and_github_unavailable_messages(
-            github_error=github_target.github_repo_error,
-            github_repo=None,
+    if prepared_cleanup.candidates and isinstance(github_target, UnresolvedForgeTarget):
+        for message in forge_unavailable_messages(
+            forge_error=github_target.repo_error,
+            repo=None,
             remote=github_target.remote,
             remote_error=github_target.remote_error,
         ):
@@ -282,7 +282,9 @@ def _prepare_cleanup(
         close_open_prs=close,
         context=context,
         dry_run=dry_run,
-        github_target=resolve_github_target(context.jj_client.list_git_remotes()),
+        github_target=resolve_forge_target(
+            context.jj_client.list_git_remotes(), forge=context.config.forge
+        ),
         state=state,
     )
 
@@ -317,6 +319,7 @@ def _resolve_cleanup_change_ids(
         )
     if pr is not None:
         pr_number, repo = resolve_pr_reference(
+            forge=context.config.forge,
             jj_client=context.jj_client,
             pr_reference=pr,
         )
@@ -371,7 +374,7 @@ async def _run_cleanup_async(
 
     candidates = prepared_cleanup.candidates
     github_target = prepared_cleanup.github_target
-    if isinstance(github_target, GithubTarget) and candidates:
+    if isinstance(github_target, ForgeTarget) and candidates:
         client_context = (
             nullcontext(github_client)
             if github_client is not None

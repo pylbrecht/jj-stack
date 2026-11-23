@@ -12,7 +12,6 @@ from jj_stack.config import MergeMethod
 from jj_stack.errors import CliError
 from jj_stack.forge.errors import ForgeError
 from jj_stack.forge.github.models import GithubStack, GithubStackMerge
-from jj_stack.forge.github.resolution import GithubRepoAddress
 from jj_stack.forge.github.stack_merge_checks import inspect_required_checks
 from jj_stack.forge.github.stack_merge_wait import wait_for_merge
 from jj_stack.forge.github.stack_safety import selected_github_stack
@@ -25,7 +24,7 @@ from jj_stack.forge.merge import (
     MergeResult,
 )
 from jj_stack.forge.models import PullRequest, Repo
-from jj_stack.forge.protocol import Forge, StackObjects
+from jj_stack.forge.protocol import Forge, RepoAddress, StackObjects
 from jj_stack.formatting import format_pr_label, format_pr_number
 from jj_stack.models.stack import LocalCommit
 from jj_stack.ui import Message
@@ -53,7 +52,7 @@ class AsyncMergePlan:
         *,
         outcome: Literal["planned", "enqueued", "failed", "merged", "pending"] = "planned",
         method: MergeMethod | None,
-        repo: GithubRepoAddress,
+        repo: RepoAddress,
         trunk_branch: str,
     ) -> MergeAction:
         numbers = ui.join(

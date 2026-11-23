@@ -7,6 +7,7 @@ import subprocess
 import time
 from dataclasses import dataclass
 from pathlib import Path
+from typing import overload
 
 import jj_stack
 import jj_stack.console as console
@@ -16,8 +17,10 @@ from jj_stack.errors import CliError
 from jj_stack.forge.github.client import GithubClient, build_github_client
 from jj_stack.forge.github.resolution import GithubRepoAddress
 from jj_stack.forge.gitlab.client import GitlabClient
+from jj_stack.forge.gitlab.forge import GitlabForge
 from jj_stack.forge.gitlab.resolution import GitlabProjectAddress
 from jj_stack.forge.gitlab.transport import GlabTransport, run_subprocess
+from jj_stack.forge.vocabulary import install_forge_vocabulary
 from jj_stack.jj.cli_args import JjCliArgs
 from jj_stack.jj.client import JjClient
 from jj_stack.jj.settings import read_jj_settings
@@ -50,14 +53,32 @@ class CommandContext:
     jj_client: JjClient
     state_store: TrackingStore
 
+    @overload
     def open_forge(
         self,
         *,
         repo: GithubRepoAddress,
         token: str | None = None,
-    ) -> GithubClient:
-        """Open the forge that hosts `repo`; GitHub is the only one so far."""
+    ) -> GithubClient: ...
 
+    @overload
+    def open_forge(
+        self,
+        *,
+        repo: GithubRepoAddress | GitlabProjectAddress,
+        token: str | None = None,
+    ) -> GithubClient | GitlabForge: ...
+
+    def open_forge(
+        self,
+        *,
+        repo: GithubRepoAddress | GitlabProjectAddress,
+        token: str | None = None,
+    ) -> GithubClient | GitlabForge:
+        """Open the forge that hosts `repo`."""
+
+        if isinstance(repo, GitlabProjectAddress):
+            return GitlabForge(self.open_gitlab(project=repo), project=repo)
         return build_github_client(repo=repo, token=token)
 
     def open_gitlab(
@@ -106,13 +127,16 @@ def bootstrap_context(
     jj_client = JjClient(repo_root, cli_args=options.cli_args, settings=settings)
     config = load_config(settings=settings)
     if config.forge not in forges:
+        supported = ("doctor", "list", "view", "checkout")
         raise CliError(
             "This command does not support GitLab yet.",
             hint=t"{ui.code('jj-stack.forge')} is {ui.code(config.forge)}; only "
-            t"{ui.cmd('jj-stack doctor')} supports GitLab so far.",
+            t"{ui.join(ui.cmd, (f'jj-stack {name}' for name in supported))} support GitLab "
+            t"so far.",
         )
 
     install_pr_branch_namespace(config.branch_prefix)
+    install_forge_vocabulary(config.forge)
     if snapshot_working_copy:
         jj_client.enable_initial_working_copy_snapshot()
     configure_logging(debug=options.debug, configured_level=config.logging.level)

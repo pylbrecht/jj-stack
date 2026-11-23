@@ -38,8 +38,8 @@ def _pr(*, base_ref: str = "main", number: int, state: PRState) -> GithubPullReq
 def _status_result(*, changes: tuple[StackStatusChange, ...]) -> StatusResult:
     return StatusResult(
         changes=changes,
-        github_error=None,
-        github_repo=None,
+        forge_error=None,
+        forge_repo=None,
         incomplete=False,
         remote=None,
         remote_error=None,
@@ -112,7 +112,7 @@ def test_reporting_prefers_required_review_but_preserves_specific_merge_warnings
     assert pr["merge_state_status"] == merge_status
     for rendered in (
         list_module._status_fragments(
-            github_error=None, remote_error=None, states=(change.state,)
+            forge_error=None, remote_error=None, states=(change.state,)
         ),
         view_module._format_status_summary(change, repo=None),
     ):
@@ -150,7 +150,7 @@ def test_list_keeps_review_counts_without_generic_merge_warning(other_needs_revi
     )
     summary = ui_module.plain_text(
         list_module._status_fragments(
-            github_error=None, remote_error=None, states=tuple(change.state for change in changes)
+            forge_error=None, remote_error=None, states=tuple(change.state for change in changes)
         )
     )
     assert ("2 need review" if other_needs_review else "needs review") in summary
@@ -168,7 +168,7 @@ def test_reporting_advises_sync_for_merged_divergent_copies() -> None:
     assert stack_change_json(merged_change)["status"] == "merged"
     summary = ui_module.plain_text(
         list_module._status_fragments(
-            github_error=None,
+            forge_error=None,
             remote_error=None,
             states=(merged_change.state,),
         )
@@ -325,7 +325,7 @@ def test_reporting_surfaces_broken_links_before_suggesting_submit(
     assert stack_change_json(change)["status"] == status
     assert label in ui_module.plain_text(
         list_module._status_fragments(
-            github_error=None,
+            forge_error=None,
             remote_error=None,
             states=(change.state,),
         )
