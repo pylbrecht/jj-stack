@@ -1,4 +1,4 @@
-"""Create or update GitHub pull requests for the selected stack of changes.
+"""Create or update pull requests for the selected stack of changes.
 
 Push the selected changes and create or update one PR per change, in local parent order.
 Existing PRs stay linked to their changes. Resolve any conflicts before submitting.
@@ -43,6 +43,7 @@ from jj_stack.forge.github.run import GithubRun, ObservedTrunk
 from jj_stack.forge.models import PullRequest
 from jj_stack.forge.pr_refs import load_pr, parse_repo_pr_reference, pr_head_repo_problem
 from jj_stack.forge.target import ForgeTarget, require_forge_repo, select_submit_remote
+from jj_stack.forge.vocabulary import forge_name
 from jj_stack.formatting import format_pr_label
 from jj_stack.identifiers import ChangeId, CommitId, short_change_id
 from jj_stack.jj.client import JjClient
@@ -82,7 +83,6 @@ from .prs import (
 from .publication import plan_pr_updates, publish_prepared
 from .render import print_selected_line, print_submit_rows
 
-_BRANCH_LOOKUP_MESSAGE = "Could not inspect PR branches on GitHub."
 _PR_LOOKUP_MESSAGE = "Could not inspect the selected pull requests."
 HELP = "Create or update PRs for a jj stack"
 DESCRIPTION_HELP = """
@@ -90,12 +90,12 @@ A pull request title comes from a change's subject line, and its body from the r
 description. When a description has no body, `jj-stack` uses the repo's pull request template
 (`.github/PULL_REQUEST_TEMPLATE.md`, `PULL_REQUEST_TEMPLATE.md`, or
 `docs/PULL_REQUEST_TEMPLATE.md`). If no local file exists, it asks GitHub for the default
-template, including the owner's public `.github` repository fallback. Without a template,
-it repeats the subject line.
+template, including the owner's public `.github` repository fallback; on GitLab it uses the
+project's `Default` merge request template. Without a template, it repeats the subject line.
 
 Later submits refresh the title and body from the change description, provided both still match
 the defaults for the last submitted version or another version in the change's `jj evolog`.
-Editing either field on GitHub preserves both.
+Editing either field on the forge preserves both.
 
 Use `--describe CHANGE=FILE` to read a PR body from a Markdown file, or `--describe stack=FILE`
 to add an overview comment to the head PR of a stack with several changes. Relative paths are
@@ -119,7 +119,8 @@ object with string `title` and `body` fields.
 def submit(*, global_options: GlobalOptions, options: SubmitOptions) -> int:
     """CLI entrypoint for `submit`."""
 
-    asyncio.run(run_submit_async(context=bootstrap_context(global_options), options=options))
+    context = bootstrap_context(global_options, forges=("github", "gitlab"))
+    asyncio.run(run_submit_async(context=context, options=options))
     return 0
 
 
@@ -257,6 +258,16 @@ async def run_submit_async(
     context: CommandContext,
     options: SubmitOptions,
 ) -> None:
+    if (
+        context.config.forge == "gitlab"
+        and _pr_metadata(context=context, options=options).team_reviewers
+    ):
+        raise UsageError(
+            "GitLab has no team reviewers.",
+            hint=t"Name the reviewers with {ui.cmd('--reviewers')} instead, and remove "
+            t"{ui.cmd('--team-reviewers')} or the {ui.code('jj-stack.team_reviewers')} setting.",
+        )
+
     # The selected line is only rendered when submit picked the default head for the user.
     print_selected = options.revset is None
     remote = select_submit_remote(context.jj_client.list_git_remotes())
@@ -470,7 +481,7 @@ async def _observe_submit(
     local_template = read_pr_template(client.repo_root)
     with console.spinner(
         description=(
-            "Inspecting remotes and fetching pull request template from GitHub"
+            f"Inspecting remotes and fetching pull request template from {forge_name()}"
             if local_template is None
             else "Inspecting remotes"
         ),
@@ -482,7 +493,7 @@ async def _observe_submit(
                     branches=exact_remote_branches,
                     include_pr_template=local_template is None and bool(exact_remote_branches),
                 ),
-                message=_BRANCH_LOOKUP_MESSAGE,
+                message=f"Could not inspect PR branches on {forge_name()}.",
             )
         )
         recovery_targets_task = asyncio.create_task(
@@ -492,7 +503,7 @@ async def _observe_submit(
                     suffixes=recovery_suffixes,
                     include_pr_template=local_template is None and not exact_remote_branches,
                 ),
-                message=_BRANCH_LOOKUP_MESSAGE,
+                message=f"Could not inspect PR branches on {forge_name()}.",
             )
         )
         repo_task = asyncio.create_task(observe_github_repo(github_client))

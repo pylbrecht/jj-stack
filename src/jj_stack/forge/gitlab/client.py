@@ -110,6 +110,28 @@ class GitlabClient:
 
             response = await self._request("GET", next_path)
 
+    async def send[ModelT: BaseModel](
+        self,
+        method: str,
+        path: str,
+        *,
+        body: Mapping[str, object],
+        model: type[ModelT],
+    ) -> ModelT:
+        """Create or change one object, such as a merge request or a note."""
+
+        return _parse(await self._request(method, path, body=body), model)
+
+    async def delete(
+        self,
+        path: str,
+    ) -> None:
+        """Delete one object. GitLab answers 204 without a body."""
+
+        response = await self._request("DELETE", path)
+        if response.status >= 300:
+            raise _status_error(response)
+
     async def mutate(
         self,
         document: str,

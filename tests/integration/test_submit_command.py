@@ -33,6 +33,7 @@ from ..support.integration_helpers import (
     init_fake_github_repo,
     init_fake_github_repo_with_submitted_feature,
     init_fake_github_repo_with_submitted_stack,
+    init_fake_gitlab_stack,
     patch_github_client_builders,
     remote_refs,
     run_command,
@@ -3050,3 +3051,95 @@ def test_submit_edit_sets_each_pr_draft_state(
 
     assert not fake_repo.prs[1].is_draft
     assert fake_repo.prs[2].is_draft
+
+
+def test_submit_on_gitlab_opens_stacked_draft_mrs_and_requests_reviews(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    repo, config_path, host = init_fake_gitlab_stack(
+        monkeypatch=monkeypatch,
+        tmp_path=tmp_path,
+        size=2,
+        open_merge_requests=False,
+    )
+    project = host.project
+    assert project is not None
+
+    exit_code = run_main(repo, config_path, "submit", "--draft", "--reviewers", "alice")
+    output = " ".join(capsys.readouterr().out.split())
+    rerun_exit_code = run_main(repo, config_path, "submit")
+    rerun_output = " ".join(capsys.readouterr().out.split())
+
+    assert exit_code == 0
+    bottom, top = project.prs[1], project.prs[2]
+    assert (bottom.base_ref, top.base_ref) == ("main", bottom.head_ref)
+    assert (bottom.title, top.title) == ("Draft: feature 1", "Draft: feature 2")
+    assert bottom.reviewers == top.reviewers == ["alice"]
+    assert "MR !1" in output and "MR !2" in output
+    assert rerun_exit_code == 0
+    assert "updated" not in rerun_output
+    assert project.prs[2].title == "Draft: feature 2"
+
+
+def test_submit_on_gitlab_stops_on_team_reviewers_before_it_pushes(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    repo, config_path, host = init_fake_gitlab_stack(
+        monkeypatch=monkeypatch,
+        tmp_path=tmp_path,
+        size=1,
+        open_merge_requests=False,
+    )
+    project = host.project
+    assert project is not None
+    branches_before = project.branch_heads()
+
+    exit_code = run_main(repo, config_path, "submit", "--team-reviewers", "platform")
+    captured = capsys.readouterr()
+
+    assert exit_code == EXIT_USAGE
+    assert "GitLab has no team reviewers" in captured.err
+    assert project.prs == {}
+    assert project.branch_heads() == branches_before
+
+
+def test_submit_on_gitlab_marks_rewritten_draft_mrs_ready_and_records_the_revision(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    repo, config_path, host = init_fake_gitlab_stack(
+        monkeypatch=monkeypatch,
+        tmp_path=tmp_path,
+        size=1,
+        open_merge_requests=False,
+    )
+    project = host.project
+    assert project is not None
+    assert run_main(repo, config_path, "submit", "--draft") == 0
+    first = selected_stack(repo).changes[0]
+    run_command(["jj", "describe", "-r", first.change_id, "-m", "feature 1 reworded"], repo)
+    second = selected_stack(repo).changes[0].commit_id
+    assert run_main(repo, config_path, "submit") == 0
+    run_command(["jj", "describe", "-r", first.change_id, "-m", "feature 1 revised"], repo)
+    rewritten = selected_stack(repo).changes[0].commit_id
+    capsys.readouterr()
+
+    exit_code = run_main(repo, config_path, "submit", "--open")
+    capsys.readouterr()
+
+    assert exit_code == 0
+    merge_request = project.prs[1]
+    assert merge_request.title == "feature 1 revised"
+    assert merge_request.head_sha == rewritten
+    (history,) = (
+        note.body for note in merge_request.notes if REVISION_HISTORY_COMMENT_MARKER in note.body
+    )
+    compare_url = f"https://gitlab.test/{project.path}/-/compare"
+    # The older revision comes from GitLab's MR versions, the newer one from this submit.
+    assert f"{compare_url}/{first.commit_id}...{second}?straight=true" in history
+    assert f"{compare_url}/{second}...{rewritten}?straight=true" in history

@@ -127,7 +127,7 @@ def bootstrap_context(
     jj_client = JjClient(repo_root, cli_args=options.cli_args, settings=settings)
     config = load_config(settings=settings)
     if config.forge not in forges:
-        supported = ("doctor", "list", "view", "checkout")
+        supported = ("doctor", "list", "view", "checkout", "submit")
         raise CliError(
             "This command does not support GitLab yet.",
             hint=t"{ui.code('jj-stack.forge')} is {ui.code(config.forge)}; only "

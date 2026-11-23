@@ -379,7 +379,7 @@ def build_parser() -> ArgumentParser:
         dest="reviewers",
         action=_CommaSeparatedValues,
         metavar="USERS",
-        help="Request reviews by GitHub username; comma-separated or repeat the option",
+        help="Request reviews by username; comma-separated or repeat the option",
     )
     add_help_argument(
         submit_parser,
@@ -387,7 +387,7 @@ def build_parser() -> ArgumentParser:
         dest="team_reviewers",
         action=_CommaSeparatedValues,
         metavar="TEAMS",
-        help="Request reviews by team slug; comma-separated or repeat the option",
+        help="Request reviews by GitHub team slug; comma-separated or repeat the option",
     )
     add_help_argument(
         submit_parser,

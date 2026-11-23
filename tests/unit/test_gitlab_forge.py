@@ -89,6 +89,19 @@ def test_merge_requests_map_to_pull_requests_by_iid() -> None:
 
 
 @pytest.mark.parametrize(
+    "title",
+    ("Draft: Add parser", "[draft] Add parser", "(Draft)Add parser", "Draft: [Draft] Add parser"),
+)
+def test_a_draft_mr_reports_its_title_without_the_draft_prefix(
+    title: str,
+) -> None:
+    pr = _read(_merge_request(1, title=title, draft=True))[1]
+
+    assert pr is not None
+    assert (pr.title, pr.is_draft) == ("Add parser", True)
+
+
+@pytest.mark.parametrize(
     ("status", "ready", "conflicts", "behind_base", "blocked"),
     (
         ("mergeable", True, False, False, False),
@@ -126,3 +139,18 @@ def test_reading_no_merge_requests_sends_no_request() -> None:
 
     assert prs == {}
     assert transport.paths == []
+
+
+def test_mrs_by_target_branch_leave_out_merged_mrs() -> None:
+    transport = _ListTransport(
+        [
+            _merge_request(1, target_branch="jj-stack/base", state="opened"),
+            _merge_request(2, target_branch="jj-stack/base", state="closed"),
+            _merge_request(3, target_branch="jj-stack/base", state="merged"),
+        ]
+    )
+    forge = GitlabForge(GitlabClient(transport), project=_PROJECT)
+
+    prs = asyncio.run(forge.get_prs_by_base_refs(base_refs=("jj-stack/base",)))
+
+    assert [pr.number for pr in prs["jj-stack/base"]] == [1, 2]
